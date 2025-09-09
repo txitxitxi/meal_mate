@@ -1,38 +1,23 @@
 // lib/app_router.dart
-import 'dart:async'; // <-- add this
-
-import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'manager/login_manager.dart';
 import 'pages/home_page.dart';
 import 'pages/login_page.dart';
 import 'pages/recipes_page.dart';
 
-final authStateChangesProvider = StreamProvider<AuthState>((ref) {
-  return Supabase.instance.client.auth.onAuthStateChange;
+// LoginManager 的 Provider
+final loginManagerProvider = Provider<LoginManager>((ref) {
+  return LoginManager();
 });
 
-class GoRouterRefreshStream extends ChangeNotifier {
-  GoRouterRefreshStream(Stream<dynamic> stream) {
-    _sub = stream.asBroadcastStream().listen((_) => notifyListeners());
-  }
-  late final StreamSubscription<dynamic> _sub;
-  @override
-  void dispose() {
-    _sub.cancel();
-    super.dispose();
-  }
-}
-
 final appRouterProvider = Provider<GoRouter>((ref) {
-  final authStream = ref.watch(authStateChangesProvider.stream);
-  final client = Supabase.instance.client;
+  final loginManager = ref.read(loginManagerProvider);
 
   return GoRouter(
-    initialLocation: '/home',
-    refreshListenable: GoRouterRefreshStream(authStream),
+    initialLocation: '/login',
+    refreshListenable: loginManager,
     routes: [
       GoRoute(
         path: '/login',
@@ -53,13 +38,19 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       ),
     ],
     redirect: (context, state) {
-      final session = client.auth.currentSession;
-      final atLogin = state.matchedLocation == '/login'; // <-- use matchedLocation
+      final isLoggedIn = loginManager.isLoggedIn;
+      final atLogin = state.matchedLocation == '/login';
 
-      if (session == null) {
-        return atLogin ? null : '/login';
+      // 如果未登录且不在登录页，跳转到登录页
+      if (!isLoggedIn && !atLogin) {
+        return '/login';
       }
-      if (atLogin) return '/home';
+
+      // 如果已登录且在登录页，跳转到主页
+      if (isLoggedIn && atLogin) {
+        return '/home';
+      }
+
       return null;
     },
   );

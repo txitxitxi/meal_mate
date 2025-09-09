@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import 'routes.dart';
+import 'app_router.dart';
+import 'manager/login_manager.dart';
 import 'services/supabase_service.dart';
 
 void main() async {
@@ -12,8 +12,11 @@ void main() async {
   await Supabase.initialize(
     url: SupabaseService.supabaseUrl,
     anonKey: SupabaseService.anonKey,
-    realtimeClientOptions: const RealtimeClientOptions(heartbeatIntervalMs: 15_000),
   );
+
+  // 初始化 LoginManager
+  final loginManager = LoginManager();
+  await loginManager.initialize();
 
   runApp(const ProviderScope(child: MealMateApp()));
 }
@@ -23,7 +26,7 @@ class MealMateApp extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final router = createRouter();
+    final router = ref.read(appRouterProvider);
     return MaterialApp.router(
       title: 'Meal Mate',
       theme: ThemeData(
