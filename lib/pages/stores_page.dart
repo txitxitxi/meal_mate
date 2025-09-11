@@ -1,8 +1,8 @@
 // lib/pages/stores/stores_page.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../providers/store_providers.dart';
-import '../../models/models.dart';
+import '../../providers/store_provider.dart';
+import '../../models/moduels.dart';
 
 class StoresPage extends ConsumerWidget {
   const StoresPage({super.key});
@@ -33,9 +33,10 @@ class StoresPage extends ConsumerWidget {
                     ),
                 ],
               ),
-              children: const [
-                SizedBox(height: 8),
-              ]..insert(1, _StoreItems(storeId: s.id)), // keep children order tidy
+              children: [
+                const SizedBox(height: 8),
+                _StoreItems(storeId: s.id),
+              ],
             );
           },
         ),
@@ -70,16 +71,7 @@ class _StoreItems extends ConsumerWidget {
                 ),
               ),
               const SizedBox(width: 8),
-              FilledButton(
-                onPressed: () async {
-                  final name = ctrl.text.trim();
-                  if (name.isEmpty) return;
-                  await ref
-                      .read(addStoreItemProvider((storeId: storeId, ingredientName: name)).future);
-                  ctrl.clear();
-                },
-                child: const Text('Add'),
-              )
+              _AddItemButton(storeId: storeId, ctrl: ctrl),
             ],
           ),
           const SizedBox(height: 8),
@@ -101,6 +93,44 @@ class _StoreItems extends ConsumerWidget {
   }
 }
 
+class _AddItemButton extends ConsumerStatefulWidget {
+  const _AddItemButton({required this.storeId, required this.ctrl});
+  final String storeId;
+  final TextEditingController ctrl;
+  @override
+  ConsumerState<_AddItemButton> createState() => _AddItemButtonState();
+}
+
+class _AddItemButtonState extends ConsumerState<_AddItemButton> {
+  bool _saving = false;
+  @override
+  Widget build(BuildContext context) {
+    return FilledButton(
+      onPressed: _saving
+          ? null
+          : () async {
+              final name = widget.ctrl.text.trim();
+              if (name.isEmpty) return;
+              setState(() => _saving = true);
+              try {
+                await ref.read(addStoreItemProvider((storeId: widget.storeId, ingredientName: name)).future);
+                // Invalidate the store items provider to refresh the list
+                ref.invalidate(storeItemsProvider(widget.storeId));
+                widget.ctrl.clear();
+              } catch (e) {
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Failed to add item: $e')),
+                );
+              } finally {
+                if (mounted) setState(() => _saving = false);
+              }
+            },
+      child: _saving ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator()) : const Text('Add'),
+    );
+  }
+}
+
 class _AddStoreDialog extends ConsumerStatefulWidget {
   const _AddStoreDialog();
   @override
@@ -112,6 +142,7 @@ class _AddStoreDialogState extends ConsumerState<_AddStoreDialog> {
   bool _isDefault = false;
   final _priorityCtrl = TextEditingController();
   final _formKey = GlobalKey<FormState>();
+  bool _saving = false;
 
   @override
   Widget build(BuildContext context) {
@@ -150,17 +181,33 @@ class _AddStoreDialogState extends ConsumerState<_AddStoreDialog> {
       actions: [
         TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
         FilledButton(
-          onPressed: () async {
-            if (!_formKey.currentState!.validate()) return;
-            final priority = int.tryParse(_priorityCtrl.text.trim());
-            await ref.read(addStoreProvider((
-              name: _nameCtrl.text.trim(),
-              isDefault: _isDefault,
-              priority: priority,
-            )).future);
-            if (mounted) Navigator.pop(context);
-          },
-          child: const Text('Save'),
+          onPressed: _saving
+              ? null
+              : () async {
+                  if (!_formKey.currentState!.validate()) return;
+                  setState(() => _saving = true);
+                  final priority = int.tryParse(_priorityCtrl.text.trim());
+                  try {
+                    await ref.read(addStoreProvider((
+                      name: _nameCtrl.text.trim(),
+                      isDefault: _isDefault,
+                      priority: priority,
+                    )).future);
+                    // Invalidate the stores provider to refresh the list
+                    ref.invalidate(storesStreamProvider);
+                    if (mounted) Navigator.pop(context);
+                  } catch (e) {
+                    if (!mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Failed to save store: $e')),
+                    );
+                  } finally {
+                    if (mounted) setState(() => _saving = false);
+                  }
+                },
+          child: _saving
+              ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator())
+              : const Text('Save'),
         ),
       ],
     );

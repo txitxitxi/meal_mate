@@ -1,4 +1,4 @@
-// lib/app_router.dart
+// lib/app_router.dartR
 import 'dart:async'; // <-- add this
 
 import 'package:flutter/material.dart';
@@ -9,6 +9,9 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'pages/home_page.dart';
 import 'pages/login_page.dart';
 import 'pages/recipes_page.dart';
+import 'pages/stores_page.dart';
+import 'pages/weekly/weekly_plan_page.dart';
+import 'pages/shopping/shopping_list_page.dart';
 
 final authStateChangesProvider = StreamProvider<AuthState>((ref) {
   return Supabase.instance.client.auth.onAuthStateChange;
@@ -43,13 +46,6 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: '/home',
         name: 'home',
         builder: (context, state) => const HomePage(),
-        routes: [
-          GoRoute(
-            path: 'recipes',
-            name: 'recipes',
-            builder: (context, state) => const RecipesPage(),
-          ),
-        ],
       ),
     ],
     redirect: (context, state) {

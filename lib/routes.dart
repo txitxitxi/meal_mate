@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-import 'pages/recipes/recipes_page.dart';
-import 'pages/stores/stores_page.dart';
+import 'pages/recipes_page.dart';
+import 'pages/stores_page.dart';
 import 'pages/weekly/weekly_plan_page.dart';
 import 'pages/shopping/shopping_list_page.dart';
 
@@ -35,13 +35,12 @@ class _RootShellState extends State<RootShell> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Router.of(context).routerDelegate.currentConfiguration.uri.toString().contains('/recipes')
-          ? const RecipesPage()
-          : Router.of(context).routerDelegate.currentConfiguration.uri.toString().contains('/stores')
-              ? const StoresPage()
-              : Router.of(context).routerDelegate.currentConfiguration.uri.toString().contains('/weekly')
-                  ? const WeeklyPlanPage()
-                  : const ShoppingListPage(),
+      body: [
+        const RecipesPage(),
+        const StoresPage(),
+        const WeeklyPlanPage(),
+        const ShoppingListPage(),
+      ][_index],
       bottomNavigationBar: NavigationBar(
         selectedIndex: _index,
         destinations: const [
@@ -52,9 +51,7 @@ class _RootShellState extends State<RootShell> {
         ],
         onDestinationSelected: (i) {
           setState(() => _index = i);
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted) context.go(_tabs[i]);
-          });
+          context.go(_tabs[i]);
         },
       ),
     );
