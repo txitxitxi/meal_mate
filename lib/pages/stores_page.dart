@@ -11,7 +11,6 @@ class StoresPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final storesAsync = ref.watch(storesStreamProvider);
     return Scaffold(
-      appBar: AppBar(title: const Text('Stores')),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => showDialog(context: context, builder: (_) => const _AddStoreDialog()),
         icon: const Icon(Icons.add_business),
@@ -26,6 +25,13 @@ class StoresPage extends ConsumerWidget {
               title: Row(
                 children: [
                   Text(s.name),
+                  const SizedBox(width: 8),
+                  Chip(
+                    label: Text('Priority ${s.priority}'),
+                    backgroundColor: s.priority <= 2 ? Colors.green.shade100 : 
+                                   s.priority <= 5 ? Colors.orange.shade100 : 
+                                   Colors.red.shade100,
+                  ),
                   if (s.isDefault)
                     const Padding(
                       padding: EdgeInsets.only(left: 8),

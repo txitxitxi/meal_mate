@@ -5,6 +5,7 @@ import 'recipes_page.dart';
 import 'stores_page.dart';
 import 'weekly/weekly_plan_page.dart';
 import 'shopping/shopping_list_page.dart';
+import '../widgets/custom_header.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -15,6 +16,7 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   int _index = 0;
   final _tabs = ['/home/recipes', '/home/stores', '/home/weekly', '/home/shopping'];
+  final _pageTitles = ['Recipes', 'Stores', 'Weekly Plan', 'Shopping List'];
 
   @override
   void initState() {
@@ -33,18 +35,7 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) {
     final user = Supabase.instance.client.auth.currentUser;
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Meal Mate'),
-        actions: [
-          IconButton(
-            onPressed: () async {
-              await Supabase.instance.client.auth.signOut();
-            },
-            icon: const Icon(Icons.logout),
-            tooltip: 'Sign out',
-          ),
-        ],
-      ),
+      appBar: CustomHeader(pageTitle: _pageTitles[_index]),
       body: IndexedStack(
         index: _index,
         children: const [

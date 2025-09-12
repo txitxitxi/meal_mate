@@ -10,7 +10,6 @@ class RecipesPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final recipesAsync = ref.watch(recipesStreamProvider);
     return Scaffold(
-      appBar: AppBar(title: const Text('Recipes')),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => showDialog(context: context, builder: (_) => const _AddRecipeDialog()),
         icon: const Icon(Icons.add),
@@ -32,7 +31,6 @@ class RecipesPage extends ConsumerWidget {
                       )
                     : const SizedBox(width: 56, height: 56, child: Icon(Icons.image_not_supported)),
                 title: Text(r.title),
-                subtitle: Text(r.id),
                 trailing: PopupMenuButton<String>(
                   onSelected: (value) {
                     if (value == 'edit') {
@@ -97,8 +95,6 @@ class RecipesPage extends ConsumerWidget {
                                 child: Image.network(r.imageUrl!, width: 200, height: 150, fit: BoxFit.cover),
                               ),
                             const SizedBox(height: 16),
-                            Text('ID: ${r.id}'),
-                            const SizedBox(height: 8),
                             const Text('Ingredients:', style: TextStyle(fontWeight: FontWeight.bold)),
                             const SizedBox(height: 8),
                             Consumer(
@@ -330,8 +326,8 @@ class _EditRecipeDialogState extends ConsumerState<_EditRecipeDialog> {
     super.initState();
     _titleCtrl.text = widget.recipe.title;
     _photoCtrl.text = widget.recipe.imageUrl ?? '';
-    // TODO: Load existing ingredients from database
-    _ings.add(IngredientInput()); // Start with one empty ingredient
+    // Start with one empty ingredient as fallback
+    _ings.add(IngredientInput());
   }
 
   void _addRow() => setState(() => _ings.add(IngredientInput()));
@@ -339,6 +335,37 @@ class _EditRecipeDialogState extends ConsumerState<_EditRecipeDialog> {
 
   @override
   Widget build(BuildContext context) {
+    // Load existing ingredients reactively
+    final ingredientsAsync = ref.watch(recipeIngredientsProvider(widget.recipe.id));
+    ingredientsAsync.when(
+      data: (ingredients) {
+        print('Edit Recipe: Loading ingredients for recipe ${widget.recipe.id}, found ${ingredients.length} ingredients');
+        if (ingredients.isNotEmpty && _ings.length == 1 && _ings.first.name.isEmpty) {
+          // Only update if we still have the empty fallback ingredient
+          print('Edit Recipe: Updating ingredients list with ${ingredients.length} items');
+          setState(() {
+            _ings.clear();
+            for (final ingredient in ingredients) {
+              final ingredientData = ingredient['ingredients'] as Map<String, dynamic>;
+              _ings.add(IngredientInput(
+                name: ingredientData['name'] as String,
+                qty: (ingredient['quantity'] as num?)?.toDouble(),
+                unit: ingredient['unit'] as String?,
+              ));
+            }
+          });
+        }
+      },
+      loading: () {
+        print('Edit Recipe: Loading ingredients...');
+        // Keep the empty ingredient while loading
+      },
+      error: (error, stack) {
+        print('Edit Recipe: Error loading ingredients: $error');
+        // Keep the empty ingredient on error
+      },
+    );
+
     return AlertDialog(
       title: const Text('Edit Recipe'),
       content: SizedBox(
@@ -370,6 +397,7 @@ class _EditRecipeDialogState extends ConsumerState<_EditRecipeDialog> {
                       Expanded(
                         flex: 3,
                         child: TextFormField(
+                          controller: TextEditingController(text: ing.name),
                           decoration: InputDecoration(labelText: 'Ingredient ${i + 1}'),
                           onChanged: (v) => ing.name = v,
                         ),
@@ -377,6 +405,7 @@ class _EditRecipeDialogState extends ConsumerState<_EditRecipeDialog> {
                       const SizedBox(width: 8),
                       Expanded(
                         child: TextFormField(
+                          controller: TextEditingController(text: ing.qty?.toString() ?? ''),
                           decoration: const InputDecoration(labelText: 'Qty'),
                           keyboardType: TextInputType.number,
                           onChanged: (v) => ing.qty = double.tryParse(v),
@@ -385,6 +414,7 @@ class _EditRecipeDialogState extends ConsumerState<_EditRecipeDialog> {
                       const SizedBox(width: 8),
                       Expanded(
                         child: TextFormField(
+                          controller: TextEditingController(text: ing.unit ?? ''),
                           decoration: const InputDecoration(labelText: 'Unit'),
                           onChanged: (v) => ing.unit = v,
                         ),
@@ -418,13 +448,16 @@ class _EditRecipeDialogState extends ConsumerState<_EditRecipeDialog> {
                   if (!_formKey.currentState!.validate()) return;
                   setState(() => _saving = true);
                   try {
-                    // TODO: Add update provider for recipe and ingredients
                     final args = (
+                      recipeId: widget.recipe.id,
                       title: _titleCtrl.text.trim(),
                       photoUrl: _photoCtrl.text.trim().isEmpty ? null : _photoCtrl.text.trim(),
                       ingredients: _ings,
                     );
-                    await Future.delayed(const Duration(seconds: 1)); // Simulate API call
+                    await ref.read(updateRecipeProvider(args).future);
+                    // Invalidate the recipes provider to refresh the list
+                    ref.invalidate(recipesStreamProvider);
+                    ref.invalidate(recipeIngredientsProvider(widget.recipe.id));
                     if (mounted) {
                       Navigator.pop(context);
                       ScaffoldMessenger.of(context).showSnackBar(
