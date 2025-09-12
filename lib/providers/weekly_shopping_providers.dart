@@ -372,9 +372,8 @@ final generateShoppingListProvider = FutureProvider<void>((ref) async {
   // Get stores and their items to categorize ingredients
   final stores = await client
       .from('stores')
-      .select('id, name, is_default')
+      .select('id, name')
       .eq('user_id', user.id)
-      .order('is_default', ascending: false)
       .order('priority');
   
   final storeItems = await client
@@ -548,7 +547,7 @@ Future<void> _generateShoppingListFromPlan(
   // Get store priorities for ingredient assignment
   final stores = await client
       .from('stores')
-      .select('id, name, priority, is_default')
+      .select('id, name, priority')
       .order('priority', ascending: true);
   
   final storePriorities = <String, int>{};
@@ -556,9 +555,8 @@ Future<void> _generateShoppingListFromPlan(
     final storeId = store['id'] as String;
     final priority = store['priority'] as int? ?? 10;
     final name = store['name'] as String;
-    final isDefault = store['is_default'] as bool? ?? false;
     storePriorities[storeId] = priority;
-    print('Store: $name (ID: $storeId, Priority: $priority, Default: $isDefault)');
+    print('🏪 Store: $name (ID: $storeId, Priority: $priority)');
   }
   
   // Create ingredient to store mapping with priority-based selection
@@ -579,23 +577,13 @@ Future<void> _generateShoppingListFromPlan(
     final ingredientName = entry.key;
     final availableStores = entry.value;
     
-    // Sort stores by priority (lower number = higher priority), then by default status
+    // Sort stores by priority (lower number = higher priority)
     availableStores.sort((a, b) {
       final priorityA = storePriorities[a] ?? 10;
       final priorityB = storePriorities[b] ?? 10;
       
-      // First priority: higher priority stores (lower number)
-      if (priorityA != priorityB) {
-        return priorityA.compareTo(priorityB);
-      }
-      
-      // Second priority: default stores when priorities are equal
-      final isDefaultA = stores.firstWhere((s) => s['id'] == a)['is_default'] as bool? ?? false;
-      final isDefaultB = stores.firstWhere((s) => s['id'] == b)['is_default'] as bool? ?? false;
-      
-      if (isDefaultA && !isDefaultB) return -1;
-      if (!isDefaultA && isDefaultB) return 1;
-      return 0; // Both have same priority and default status
+      // Sort by priority (lower number = higher priority)
+      return priorityA.compareTo(priorityB);
     });
     
     // Assign to the highest priority store
@@ -605,13 +593,12 @@ Future<void> _generateShoppingListFromPlan(
     if (ingredientName.toLowerCase() == 'beef') {
       final selectedStoreName = stores.firstWhere((s) => s['id'] == selectedStoreId)['name'];
       final selectedStorePriority = storePriorities[selectedStoreId] ?? 10;
-      final selectedStoreIsDefault = stores.firstWhere((s) => s['id'] == selectedStoreId)['is_default'] as bool? ?? false;
-      print('Beef assigned to: $selectedStoreName (Priority: $selectedStorePriority, Default: $selectedStoreIsDefault)');
-      print('Available stores for beef: ${availableStores.map((id) => {
+      print('🐄 Beef assigned to: $selectedStoreName (Priority: $selectedStorePriority)');
+      print('🐄 Available stores for beef: ${availableStores.map((id) => {
         'name': stores.firstWhere((s) => s['id'] == id)['name'],
         'priority': storePriorities[id] ?? 10,
-        'is_default': stores.firstWhere((s) => s['id'] == id)['is_default'] as bool? ?? false
       }).toList()}');
+      print('🐄 Ingredient name: "$ingredientName" (exact match: ${ingredientName.toLowerCase() == 'beef'})');
     }
   }
   
@@ -699,7 +686,7 @@ Future<List<Map<String, dynamic>>> _selectOptimalRecipes(
   // Get store priorities
   final stores = await client
       .from('stores')
-      .select('id, name, priority, is_default')
+      .select('id, name, priority')
       .order('priority', ascending: true);
   
   final storePriorities = <String, int>{};
@@ -802,25 +789,20 @@ Future<void> _optimizeStoreVisits(
 ) async {
   print('Optimizing store visits...');
   
-  // Get all stores with their priority and preferred status
+  // Get all stores with their priority
   final stores = await client
       .from('stores')
-      .select('id, name, priority, is_default')
+      .select('id, name, priority')
       .order('priority', ascending: true);
   
   // Create store priority map (lower number = higher priority)
   final storePriorities = <String, int>{};
-  final defaultStoreId = <String>{};
   
   for (final store in stores) {
     final storeId = store['id'] as String;
     final priority = store['priority'] as int? ?? 10;
-    final isDefault = store['is_default'] as bool? ?? false;
     
     storePriorities[storeId] = priority;
-    if (isDefault) {
-      defaultStoreId.add(storeId);
-    }
   }
   
   // Strategy 1: Prioritize minimizing store visits, then use store priority as tiebreaker
@@ -829,24 +811,19 @@ Future<void> _optimizeStoreVisits(
     storeSizes[entry.key] = entry.value.length;
   }
   
-  // Sort stores by priority first (lower number = higher priority), then by default status, then by size
+  // Sort stores by priority first (lower number = higher priority), then by size
   final sortedStores = storeIngredientMap.keys.toList()
     ..sort((a, b) {
       final priorityA = storePriorities[a] ?? 10;
       final priorityB = storePriorities[b] ?? 10;
       final sizeA = storeSizes[a] ?? 0;
       final sizeB = storeSizes[b] ?? 0;
-      final isDefaultA = defaultStoreId.contains(a);
-      final isDefaultB = defaultStoreId.contains(b);
       
       // First priority: higher priority stores (lower number)
       if (priorityA != priorityB) {
         return priorityA.compareTo(priorityB);
       }
-      // Second priority: default stores when priorities are equal
-      if (isDefaultA && !isDefaultB) return -1;
-      if (!isDefaultA && isDefaultB) return 1;
-      // Third priority: larger stores (for better consolidation)
+      // Second priority: larger stores (for better consolidation)
       return sizeB.compareTo(sizeA);
     });
   
@@ -961,12 +938,10 @@ Future<void> _optimizeStoreVisits(
     }
   }
   
-  // Assign unassigned ingredients to default store or highest priority store
+  // Assign unassigned ingredients to highest priority store
   if (unassignedIngredients.isNotEmpty) {
     String targetStore;
-    if (defaultStoreId.isNotEmpty) {
-      targetStore = defaultStoreId.first;
-    } else if (storePriorities.isNotEmpty) {
+    if (storePriorities.isNotEmpty) {
       targetStore = storePriorities.entries
           .reduce((a, b) => a.value < b.value ? a : b)
           .key;
