@@ -12,9 +12,9 @@ class WeeklyPlanPage extends ConsumerStatefulWidget {
 }
 
 class _WeeklyPlanPageState extends ConsumerState<WeeklyPlanPage> {
-  final List<String> _selectedProteins = ['none'];
+  final List<String> _selectedProteins = ['any'];
   final List<String> _availableProteins = [
-    'none',
+    'any',
     'chicken',
     'beef', 
     'pork',
@@ -44,45 +44,51 @@ class _WeeklyPlanPageState extends ConsumerState<WeeklyPlanPage> {
           if (_isGenerating) const LinearProgressIndicator(minHeight: 2),
           // Protein Preferences Section
           Card(
-            margin: const EdgeInsets.all(12),
+            margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             child: Padding(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(12),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text(
                     'Protein Preferences',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                   ),
                   const SizedBox(height: 8),
-                  const Text(
-                    'Select your preferred proteins for this week:',
-                    style: TextStyle(color: Colors.grey),
-                  ),
-                  const SizedBox(height: 12),
                   Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
+                    spacing: 6,
+                    runSpacing: 6,
                     children: _availableProteins.map((protein) {
                       final isSelected = _selectedProteins.contains(protein);
                       return FilterChip(
-                        label: Text(protein.toUpperCase()),
+                        label: Text(protein.split(' ').map((word) => 
+                          word.isEmpty ? '' : word[0].toUpperCase() + word.substring(1).toLowerCase()
+                        ).join(' ')),
                         selected: isSelected,
                         onSelected: (selected) {
                           setState(() {
                             if (selected) {
+                              // If selecting a non-"any" protein, remove "any"
+                              if (protein != 'any') {
+                                _selectedProteins.remove('any');
+                              }
                               _selectedProteins.add(protein);
                             } else {
                               _selectedProteins.remove(protein);
+                              // If deselecting "any" and no other proteins selected, add "any" back
+                              if (protein == 'any' && _selectedProteins.isEmpty) {
+                                _selectedProteins.add('any');
+                              }
                               // Ensure at least one protein is selected
                               if (_selectedProteins.isEmpty) {
-                                _selectedProteins.add('none');
+                                _selectedProteins.add('any');
                               }
                             }
                           });
                         },
                         selectedColor: Colors.green.withOpacity(0.3),
                         checkmarkColor: Colors.green,
+                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       );
                     }).toList(),
                   ),

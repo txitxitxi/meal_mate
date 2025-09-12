@@ -16,7 +16,7 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   int _index = 0;
   final _tabs = ['/home/recipes', '/home/stores', '/home/weekly', '/home/shopping'];
-  final _pageTitles = ['Recipes', 'Stores', 'Weekly Plan', 'Shopping List'];
+  final _pageTitles = ['Recipes', 'Stores', 'Meal Prep', 'Shopping List'];
 
   @override
   void initState() {
@@ -50,7 +50,7 @@ class _HomePageState extends State<HomePage> {
         destinations: const [
           NavigationDestination(icon: Icon(Icons.book), label: 'Recipes'),
           NavigationDestination(icon: Icon(Icons.store), label: 'Stores'),
-          NavigationDestination(icon: Icon(Icons.calendar_month), label: 'Weekly'),
+          NavigationDestination(icon: Icon(Icons.calendar_month), label: 'Meal Prep'),
           NavigationDestination(icon: Icon(Icons.shopping_cart), label: 'Shopping'),
         ],
         onDestinationSelected: (i) {

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/recipe_providers.dart';
 import '../../models/moduels.dart';
+import '../../utils/text_formatter.dart';
 
 class RecipesPage extends ConsumerWidget {
   const RecipesPage({super.key});
@@ -12,8 +13,8 @@ class RecipesPage extends ConsumerWidget {
     return Scaffold(
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => showDialog(context: context, builder: (_) => const _AddRecipeDialog()),
-        icon: const Icon(Icons.add),
-        label: const Text('Add'),
+        icon: const Icon(Icons.restaurant),
+        label: const Text('Add Recipe'),
       ),
       body: recipesAsync.when(
         data: (recipes) => ListView.separated(
@@ -221,6 +222,17 @@ class _AddRecipeDialogState extends ConsumerState<_AddRecipeDialog> {
                   controller: _titleCtrl,
                   decoration: const InputDecoration(labelText: 'Title'),
                   validator: (v) => (v == null || v.trim().isEmpty) ? 'Required' : null,
+                  onChanged: (value) {
+                    // Auto-format recipe title as user types
+                    final cursorPosition = _titleCtrl.selection.baseOffset;
+                    final formatted = TextFormatter.toRecipeTitleCase(value);
+                    if (formatted != value) {
+                      _titleCtrl.value = TextEditingValue(
+                        text: formatted,
+                        selection: TextSelection.collapsed(offset: cursorPosition),
+                      );
+                    }
+                  },
                 ),
                 const SizedBox(height: 8),
                 TextFormField(
@@ -239,7 +251,7 @@ class _AddRecipeDialogState extends ConsumerState<_AddRecipeDialog> {
                         flex: 3,
                         child: TextFormField(
                           decoration: InputDecoration(labelText: 'Ingredient ${i + 1}'),
-                          onChanged: (v) => ing.name = v,
+                          onChanged: (v) => ing.name = TextFormatter.toTitleCase(v),
                         ),
                       ),
                       const SizedBox(width: 8),
@@ -280,7 +292,7 @@ class _AddRecipeDialogState extends ConsumerState<_AddRecipeDialog> {
                   if (!_formKey.currentState!.validate()) return;
                   setState(() => _saving = true);
                   final args = (
-                    title: _titleCtrl.text.trim(),
+                    title: TextFormatter.toRecipeTitleCase(_titleCtrl.text.trim()),
                     photoUrl: _photoCtrl.text.trim().isEmpty ? null : _photoCtrl.text.trim(),
                     protein: _selectedProtein,
                     ingredients: _ings,
@@ -380,6 +392,17 @@ class _EditRecipeDialogState extends ConsumerState<_EditRecipeDialog> {
                   controller: _titleCtrl,
                   decoration: const InputDecoration(labelText: 'Title'),
                   validator: (v) => (v == null || v.trim().isEmpty) ? 'Required' : null,
+                  onChanged: (value) {
+                    // Auto-format recipe title as user types
+                    final cursorPosition = _titleCtrl.selection.baseOffset;
+                    final formatted = TextFormatter.toRecipeTitleCase(value);
+                    if (formatted != value) {
+                      _titleCtrl.value = TextEditingValue(
+                        text: formatted,
+                        selection: TextSelection.collapsed(offset: cursorPosition),
+                      );
+                    }
+                  },
                 ),
                 const SizedBox(height: 8),
                 TextFormField(
@@ -399,7 +422,7 @@ class _EditRecipeDialogState extends ConsumerState<_EditRecipeDialog> {
                         child: TextFormField(
                           controller: TextEditingController(text: ing.name),
                           decoration: InputDecoration(labelText: 'Ingredient ${i + 1}'),
-                          onChanged: (v) => ing.name = v,
+                          onChanged: (v) => ing.name = TextFormatter.toTitleCase(v),
                         ),
                       ),
                       const SizedBox(width: 8),
@@ -450,7 +473,7 @@ class _EditRecipeDialogState extends ConsumerState<_EditRecipeDialog> {
                   try {
                     final args = (
                       recipeId: widget.recipe.id,
-                      title: _titleCtrl.text.trim(),
+                      title: TextFormatter.toRecipeTitleCase(_titleCtrl.text.trim()),
                       photoUrl: _photoCtrl.text.trim().isEmpty ? null : _photoCtrl.text.trim(),
                       ingredients: _ings,
                     );

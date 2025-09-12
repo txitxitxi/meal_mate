@@ -46,7 +46,7 @@ class _RootShellState extends State<RootShell> {
         destinations: const [
           NavigationDestination(icon: Icon(Icons.book), label: 'Recipes'),
           NavigationDestination(icon: Icon(Icons.store_mall_directory), label: 'Stores'),
-          NavigationDestination(icon: Icon(Icons.calendar_month), label: 'Weekly'),
+          NavigationDestination(icon: Icon(Icons.calendar_month), label: 'Meal Prep'),
           NavigationDestination(icon: Icon(Icons.shopping_cart), label: 'Shopping'),
         ],
         onDestinationSelected: (i) {
