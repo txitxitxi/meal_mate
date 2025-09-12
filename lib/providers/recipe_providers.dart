@@ -144,3 +144,67 @@ final recipeIngredientsProvider = FutureProvider.family<List<Map<String, dynamic
   
   return response;
 });
+
+final updateRecipeProvider = FutureProvider.family<void, ({
+  String recipeId,
+  String title,
+  String? photoUrl,
+  List<IngredientInput> ingredients,
+})>((ref, args) async {
+  final client = SupabaseService.client;
+  
+  // Update the recipe
+  await client
+      .from('recipes')
+      .update({
+        'title': args.title,
+        if (args.photoUrl != null) 'image_url': args.photoUrl,
+      })
+      .eq('id', args.recipeId);
+  
+  // Delete existing ingredients
+  await client
+      .from('recipe_ingredients')
+      .delete()
+      .eq('recipe_id', args.recipeId);
+  
+  // Add updated ingredients
+  for (final ing in args.ingredients.where((i) => i.name.trim().isNotEmpty)) {
+    final name = ing.name.trim();
+    
+    // Find or create ingredient
+    Map<String, dynamic>? ingredient;
+    final found = await client
+        .from('ingredients')
+        .select('id, default_unit')
+        .ilike('name', name)
+        .maybeSingle();
+    
+    if (found != null) {
+      ingredient = found as Map<String, dynamic>;
+    } else {
+      // Auto-categorize ingredient based on name
+      final category = _categorizeIngredient(name);
+      ingredient = await client
+          .from('ingredients')
+          .insert({
+            'name': name,
+            'default_unit': ing.unit,
+            'category': category,
+          })
+          .select('id, default_unit, category')
+          .single();
+    }
+    
+    final ingredientId = ingredient['id'] as String;
+    final defaultUnit = ingredient['default_unit'] as String?;
+    
+    // Insert into recipe_ingredients
+    await client.from('recipe_ingredients').insert({
+      'recipe_id': args.recipeId,
+      'ingredient_id': ingredientId,
+      'quantity': ing.qty,
+      'unit': ing.unit ?? defaultUnit,
+    });
+  }
+});

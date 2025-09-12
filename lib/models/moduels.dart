@@ -51,11 +51,13 @@ class Store {
   final String id;
   final String name;
   final bool isDefault;
-  Store({required this.id, required this.name, required this.isDefault});
+  final int priority;
+  Store({required this.id, required this.name, required this.isDefault, required this.priority});
   factory Store.fromMap(Map<String, dynamic> m) => Store(
         id: m['id'] as String,
         name: m['name'] as String,
         isDefault: (m['is_default'] as bool?) ?? false,
+        priority: (m['priority'] as int?) ?? 10,
       );
 }
 

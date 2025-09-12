@@ -12,7 +12,6 @@ class ShoppingListPage extends ConsumerWidget {
     final generateShoppingListAsync = ref.watch(generateShoppingListProvider);
     
     return Scaffold(
-      appBar: AppBar(title: const Text('Shopping List')),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () async {
           try {

@@ -34,7 +34,6 @@ class _WeeklyPlanPageState extends ConsumerState<WeeklyPlanPage> {
     final weeklyAsync = ref.watch(weeklyPlanProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Weekly Plan')),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _showPlanConfigDialog(),
         label: const Text('Generate Plan'),
