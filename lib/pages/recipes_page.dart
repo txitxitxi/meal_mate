@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/recipe_providers.dart';
-import '../../models/moduels.dart';
+import '../../models/moduels.dart' hide Recipe; // Hide Recipe from moduels.dart to avoid conflict
+import '../../models/recipe.dart';
 import '../../utils/text_formatter.dart';
 
 class RecipesPage extends ConsumerWidget {
@@ -206,6 +207,26 @@ class _AddRecipeDialogState extends ConsumerState<_AddRecipeDialog> {
 
   void _addRow() => setState(() => _ings.add(IngredientInput()));
 
+  ProteinPreference _parseProteinPreference(String protein) {
+    switch (protein.toLowerCase()) {
+      case 'chicken':
+        return ProteinPreference.chicken;
+      case 'beef':
+        return ProteinPreference.beef;
+      case 'pork':
+        return ProteinPreference.pork;
+      case 'fish':
+      case 'seafood':
+        return ProteinPreference.fish;
+      case 'vegetarian':
+        return ProteinPreference.vegetarian;
+      case 'vegan':
+        return ProteinPreference.vegan;
+      default:
+        return ProteinPreference.none;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
@@ -293,14 +314,22 @@ class _AddRecipeDialogState extends ConsumerState<_AddRecipeDialog> {
                   setState(() => _saving = true);
                   final args = (
                     title: TextFormatter.toRecipeTitleCase(_titleCtrl.text.trim()),
+                    description: null,
                     photoUrl: _photoCtrl.text.trim().isEmpty ? null : _photoCtrl.text.trim(),
-                    protein: _selectedProtein,
+                    protein: _parseProteinPreference(_selectedProtein),
+                    cuisine: null,
+                    servings: 2,
+                    prepTimeMin: null,
+                    cookTimeMin: null,
+                    visibility: RecipeVisibility.public,
                     ingredients: _ings,
                   );
                   try {
                     await ref.read(addRecipeProvider(args).future);
-                    // Invalidate the recipes provider to refresh the list
+                    // Invalidate all recipe-related providers to refresh the list
                     ref.invalidate(recipesStreamProvider);
+                    ref.invalidate(publicRecipesStreamProvider);
+                    ref.invalidate(userRecipesStreamProvider);
                     if (mounted) Navigator.pop(context);
                   } catch (e) {
                     if (!mounted) return;

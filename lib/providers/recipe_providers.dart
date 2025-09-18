@@ -1,6 +1,8 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../models/moduels.dart';
+import '../models/moduels.dart' hide Recipe; // Hide Recipe from moduels.dart to avoid conflict
+import '../models/recipe.dart';
 import '../services/supabase_service.dart';
+import 'auth_providers.dart';
 
 // Helper function to categorize ingredients based on name
 String _categorizeIngredient(String name) {
@@ -52,31 +54,103 @@ String _categorizeIngredient(String name) {
   return 'other';
 }
 
-final recipesStreamProvider = StreamProvider<List<Recipe>>((ref) {
+// Stream of public recipes (for discovery)
+final publicRecipesStreamProvider = StreamProvider<List<Recipe>>((ref) {
   final stream = SupabaseService.client
       .from('recipes')
       .stream(primaryKey: ['id'])
-      .order('created_at')
+      .eq('visibility', 'public')
+      .order('created_at', ascending: false)
       .map((rows) => rows.map((m) => Recipe.fromMap(m)).toList());
   return stream;
 });
 
-final addRecipeProvider = FutureProvider.family<void, ({String title, String? photoUrl, String protein, List<IngredientInput> ingredients})>((ref, args) async {
+// Stream of current user's recipes only
+final userRecipesStreamProvider = StreamProvider<List<Recipe>>((ref) {
+  final user = ref.watch(currentUserProvider);
+  if (user == null) {
+    return Stream.value(<Recipe>[]);
+  }
+
+  final stream = SupabaseService.client
+      .from('recipes')
+      .stream(primaryKey: ['id'])
+      .eq('author_id', user.id)
+      .order('created_at', ascending: false)
+      .map((rows) => rows.map((m) => Recipe.fromMap(m)).toList());
+  return stream;
+});
+
+// Stream for recipes with proper user isolation
+final recipesStreamProvider = StreamProvider<List<Recipe>>((ref) {
+  final user = ref.watch(currentUserProvider);
+  if (user == null) {
+    return Stream.value(<Recipe>[]);
+  }
+
+  // For now, show only the current user's recipes
+  // This ensures proper isolation while we work on the multi-user features
+  final stream = SupabaseService.client
+      .from('recipes')
+      .stream(primaryKey: ['id'])
+      .eq('author_id', user.id)
+      .order('created_at', ascending: false)
+      .map((rows) => rows.map((m) => Recipe.fromMap(m)).toList());
+  return stream;
+});
+
+final addRecipeProvider = FutureProvider.family<void, ({
+  String title, 
+  String? description,
+  String? photoUrl, 
+  ProteinPreference protein, 
+  String? cuisine,
+  int servings,
+  int? prepTimeMin,
+  int? cookTimeMin,
+  RecipeVisibility visibility,
+  List<IngredientInput> ingredients
+})>((ref, args) async {
   final client = SupabaseService.client;
   final uid = client.auth.currentUser?.id;
   if (uid == null) {
     throw Exception('Not signed in');
   }
+  
+  // Ensure user exists in public.users table (for legacy constraint)
+  await client.from('users').upsert({
+    'id': uid,
+    'display_name': client.auth.currentUser?.userMetadata?['full_name'] ?? 
+                   client.auth.currentUser?.email?.split('@')[0],
+  });
+  
+  // Also ensure user has a proper profile
+  await client.from('profiles').upsert({
+    'user_id': uid,
+    'handle': client.auth.currentUser?.email?.split('@')[0]?.toLowerCase() ?? 'user',
+    'display_name': client.auth.currentUser?.userMetadata?['full_name'] ?? 
+                   client.auth.currentUser?.email?.split('@')[0],
+  });
+  
   final insert = <String, dynamic>{
     'title': args.title,
-    'user_id': uid,
-    'protein': args.protein,
+    'user_id': uid, // Legacy field - now guaranteed to exist in users table
+    'author_id': uid, // New multi-user field - references auth.users(id)
+    'description': args.description,
+    'protein': args.protein.name,
+    'cuisine': args.cuisine,
+    'servings': args.servings,
+    'prep_time_min': args.prepTimeMin,
+    'cook_time_min': args.cookTimeMin,
+    'visibility': args.visibility.name,
+    'language': 'en',
   };
+  
   if (args.photoUrl != null && args.photoUrl!.isNotEmpty) {
     insert['image_url'] = args.photoUrl;
   }
+  
   final recipe = await client.from('recipes').insert(insert).select('id').single();
-
   final recipeId = recipe['id'] as String;
 
   for (final ing in args.ingredients.where((i) => i.name.trim().isNotEmpty)) {
@@ -101,6 +175,7 @@ final addRecipeProvider = FutureProvider.family<void, ({String title, String? ph
             'name': name,
             'default_unit': ing.unit,
             'category': category,
+            'created_by': uid,
           })
           .select('id, default_unit, category')
           .single();
@@ -121,12 +196,20 @@ final addRecipeProvider = FutureProvider.family<void, ({String title, String? ph
 
 final deleteRecipeProvider = FutureProvider.family<void, String>((ref, recipeId) async {
   final client = SupabaseService.client;
+  final uid = client.auth.currentUser?.id;
+  if (uid == null) {
+    throw Exception('Not signed in');
+  }
   
   // First delete all recipe ingredients
   await client.from('recipe_ingredients').delete().eq('recipe_id', recipeId);
   
-  // Then delete the recipe
-  await client.from('recipes').delete().eq('id', recipeId);
+  // Then delete the recipe (only if owned by current user)
+  await client
+      .from('recipes')
+      .delete()
+      .eq('id', recipeId)
+      .eq('author_id', uid);
 });
 
 final recipeIngredientsProvider = FutureProvider.family<List<Map<String, dynamic>>, String>((ref, recipeId) async {

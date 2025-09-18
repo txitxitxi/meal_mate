@@ -1,11 +1,19 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/moduels.dart';
 import '../services/supabase_service.dart';
+import 'auth_providers.dart';
 
 final weeklyPlanProvider = StreamProvider<List<WeeklyEntry>>((ref) async* {
+  final user = ref.watch(currentUserProvider);
+  if (user == null) {
+    yield <WeeklyEntry>[];
+    return;
+  }
+
   final stream = SupabaseService.client
       .from('weekly_plans')
       .stream(primaryKey: ['id'])
+      .eq('user_id', user.id) // Filter by current user
       .order('week_start_date')
       .map((rows) async {
         final entries = <WeeklyEntry>[];
@@ -210,14 +218,35 @@ final generatePlanProvider = FutureProvider.family<void, Map<String, dynamic>>((
 });
 
 final shoppingListProvider = StreamProvider<List<ShoppingListItem>>((ref) {
+  final user = ref.watch(currentUserProvider);
+  if (user == null) {
+    return Stream.value(<ShoppingListItem>[]);
+  }
+
+  // For now, we'll need to filter shopping list items differently
+  // This will be handled by ensuring only user's weekly_plan_ids are used
   return SupabaseService.client
       .from('shopping_list_items')
       .stream(primaryKey: ['id'])
       .order('id', ascending: true)
       .map((rows) async {
-        // Get all unique store IDs and ingredient IDs
-        final storeIds = rows.map((r) => r['store_id'] as String?).whereType<String>().toSet().toList();
-        final ingredientIds = rows.map((r) => r['ingredient_id'] as String).toSet().toList();
+        // First, get user's weekly plan IDs to filter shopping list items
+        final userWeeklyPlans = await SupabaseService.client
+            .from('weekly_plans')
+            .select('id')
+            .eq('user_id', user.id);
+        
+        final userWeeklyPlanIds = userWeeklyPlans.map((p) => p['id'] as String).toSet();
+        
+        // Filter rows to only include items from user's weekly plans
+        final userRows = rows.where((r) {
+          final weeklyPlanId = r['weekly_plan_id'] as String?;
+          return weeklyPlanId != null && userWeeklyPlanIds.contains(weeklyPlanId);
+        }).toList();
+        
+        // Get all unique store IDs and ingredient IDs from filtered rows
+        final storeIds = userRows.map((r) => r['store_id'] as String?).whereType<String>().toSet().toList();
+        final ingredientIds = userRows.map((r) => r['ingredient_id'] as String).toSet().toList();
         
         // Batch fetch store names and ingredient names
         final stores = <String, String>{};
@@ -244,7 +273,7 @@ final shoppingListProvider = StreamProvider<List<ShoppingListItem>>((ref) {
         
         // Create shopping list items
         final items = <ShoppingListItem>[];
-        for (final row in rows) {
+        for (final row in userRows) {
           final storeId = row['store_id'] as String?;
           final ingredientId = row['ingredient_id'] as String;
           

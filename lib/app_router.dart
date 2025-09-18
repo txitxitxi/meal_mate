@@ -1,5 +1,4 @@
-// lib/app_router.dartR
-import 'dart:async'; // <-- add this
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -8,14 +7,12 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'pages/home_page.dart';
 import 'pages/login_page.dart';
+import 'pages/profile_setup_page.dart';
 import 'pages/recipes_page.dart';
 import 'pages/stores_page.dart';
 import 'pages/weekly/weekly_plan_page.dart';
 import 'pages/shopping/shopping_list_page.dart';
-
-final authStateChangesProvider = StreamProvider<AuthState>((ref) {
-  return Supabase.instance.client.auth.onAuthStateChange;
-});
+import 'providers/auth_providers.dart';
 
 class GoRouterRefreshStream extends ChangeNotifier {
   GoRouterRefreshStream(Stream<dynamic> stream) {
@@ -30,8 +27,7 @@ class GoRouterRefreshStream extends ChangeNotifier {
 }
 
 final appRouterProvider = Provider<GoRouter>((ref) {
-  final authStream = ref.watch(authStateChangesProvider.stream);
-  final client = Supabase.instance.client;
+  final authStream = ref.watch(authStateProvider.stream);
 
   return GoRouter(
     initialLocation: '/home',
@@ -43,19 +39,62 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const LoginPage(),
       ),
       GoRoute(
+        path: '/profile-setup',
+        name: 'profile-setup',
+        builder: (context, state) => const ProfileSetupPage(),
+      ),
+      GoRoute(
         path: '/home',
         name: 'home',
         builder: (context, state) => const HomePage(),
       ),
+      GoRoute(
+        path: '/recipes',
+        name: 'recipes',
+        builder: (context, state) => const RecipesPage(),
+      ),
+      GoRoute(
+        path: '/stores',
+        name: 'stores',
+        builder: (context, state) => const StoresPage(),
+      ),
+      GoRoute(
+        path: '/weekly',
+        name: 'weekly',
+        builder: (context, state) => const WeeklyPlanPage(),
+      ),
+      GoRoute(
+        path: '/shopping',
+        name: 'shopping',
+        builder: (context, state) => const ShoppingListPage(),
+      ),
     ],
-    redirect: (context, state) {
-      final session = client.auth.currentSession;
-      final atLogin = state.matchedLocation == '/login'; // <-- use matchedLocation
-
+    redirect: (context, state) async {
+      final container = ProviderScope.containerOf(context);
+      final authState = await container.read(authStateProvider.future);
+      final userProfile = container.read(userProfileProvider);
+      
+      final session = authState.session;
+      final currentPath = state.matchedLocation;
+      
+      // Not authenticated
       if (session == null) {
-        return atLogin ? null : '/login';
+        if (currentPath == '/login') return null;
+        return '/login';
       }
-      if (atLogin) return '/home';
+      
+      // Authenticated but no profile yet
+      final profile = await userProfile;
+      if (profile == null) {
+        if (currentPath == '/profile-setup' || currentPath == '/login') return null;
+        return '/profile-setup';
+      }
+      
+      // Authenticated with profile, redirect away from auth pages
+      if (currentPath == '/login' || currentPath == '/profile-setup') {
+        return '/home';
+      }
+      
       return null;
     },
   );
