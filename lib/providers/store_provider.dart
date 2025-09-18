@@ -1,11 +1,18 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/moduels.dart';
 import '../services/supabase_service.dart';
+import 'auth_providers.dart';
 
 final storesStreamProvider = StreamProvider<List<Store>>((ref) {
+  final user = ref.watch(currentUserProvider);
+  if (user == null) {
+    return Stream.value(<Store>[]);
+  }
+
   return SupabaseService.client
       .from('stores')
       .stream(primaryKey: ['id'])
+      .eq('user_id', user.id) // Filter by current user
       .order('priority', ascending: true)
       .map((rows) {
         // Debug: print the raw data to see what we're getting
