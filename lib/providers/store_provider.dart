@@ -3,29 +3,67 @@ import '../models/moduels.dart';
 import '../services/supabase_service.dart';
 import 'auth_providers.dart';
 
+// Add a refresh trigger
+final storesRefreshProvider = StateProvider<int>((ref) => 0);
+
 final storesStreamProvider = StreamProvider<List<Store>>((ref) {
+  // Watch the refresh trigger to force refresh when needed
+  ref.watch(storesRefreshProvider);
   final user = ref.watch(currentUserProvider);
   if (user == null) {
+    print('No user found, returning empty stores list');
     return Stream.value(<Store>[]);
   }
 
+  print('Fetching stores for user: ${user.id}');
+  
+  // Use a simple stream with proper user filtering
   return SupabaseService.client
       .from('stores')
       .stream(primaryKey: ['id'])
       .eq('user_id', user.id) // Filter by current user
       .order('priority', ascending: true)
       .map((rows) {
-        // Debug: print the raw data to see what we're getting
-        print('Raw stores data: $rows');
-        final stores = rows.map((m) => Store.fromMap(m)).toList();
+        print('Raw stores data for user ${user.id}: $rows');
+        
+        // Double-check that all stores belong to the current user
+        final filteredRows = rows.where((row) {
+          final storeUserId = row['user_id'] as String?;
+          final belongsToUser = storeUserId == user.id;
+          if (!belongsToUser) {
+            print('WARNING: Found store ${row['id']} belonging to user $storeUserId, expected ${user.id}');
+          }
+          return belongsToUser;
+        }).toList();
+        
+        final stores = filteredRows.map((m) => Store.fromMap(m)).toList();
+        print('Processed ${stores.length} stores for user ${user.id}');
         return stores;
       });
 });
 
 final storeItemsProvider = FutureProvider.family<List<StoreItem>, String>((ref, storeId) async {
   final client = SupabaseService.client;
+  final user = client.auth.currentUser;
   
-  // First get the store items
+  if (user == null) {
+    throw Exception('User must be signed in to view store items');
+  }
+  
+  // First verify that the store belongs to the current user
+  final store = await client
+      .from('stores')
+      .select('id, user_id')
+      .eq('id', storeId)
+      .eq('user_id', user.id)
+      .maybeSingle();
+  
+  if (store == null) {
+    print('WARNING: Store $storeId does not belong to user ${user.id}');
+    return [];
+  }
+  
+  // Then get the store items
   final storeItems = await client
       .from('store_items')
       .select('id, store_id, ingredient_id, price, aisle, availability, preferred')

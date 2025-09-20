@@ -47,6 +47,24 @@ class _StoresPageState extends ConsumerState<StoresPage> {
     final storesAsync = ref.watch(storesStreamProvider);
     
     return Scaffold(
+      appBar: AppBar(
+        title: const Text('Stores'),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: () {
+              // Force refresh stores
+              ref.read(storesRefreshProvider.notifier).state++;
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Refreshing stores...')),
+              );
+            },
+            tooltip: 'Refresh Stores',
+          ),
+        ],
+      ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => showDialog(context: context, builder: (_) => const _AddStoreDialog()),
         icon: const Icon(Icons.add_business),

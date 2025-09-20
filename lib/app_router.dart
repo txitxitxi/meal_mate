@@ -9,9 +9,9 @@ import 'pages/home_page.dart';
 import 'pages/login_page.dart';
 import 'pages/profile_setup_page.dart';
 import 'pages/recipes_page.dart';
+import 'pages/public_recipes_page.dart';
 import 'pages/stores_page.dart';
 import 'pages/weekly/weekly_plan_page.dart';
-import 'pages/shopping/shopping_list_page.dart';
 import 'providers/auth_providers.dart';
 
 class GoRouterRefreshStream extends ChangeNotifier {
@@ -49,6 +49,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const HomePage(),
       ),
       GoRoute(
+        path: '/public-recipes',
+        name: 'public-recipes',
+        builder: (context, state) => const PublicRecipesPage(),
+      ),
+      GoRoute(
         path: '/recipes',
         name: 'recipes',
         builder: (context, state) => const RecipesPage(),
@@ -62,11 +67,6 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: '/weekly',
         name: 'weekly',
         builder: (context, state) => const WeeklyPlanPage(),
-      ),
-      GoRoute(
-        path: '/shopping',
-        name: 'shopping',
-        builder: (context, state) => const ShoppingListPage(),
       ),
     ],
     redirect: (context, state) async {
