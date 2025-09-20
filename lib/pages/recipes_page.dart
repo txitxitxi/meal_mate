@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/recipe_providers.dart';
+import '../../providers/auth_providers.dart';
 import '../../models/moduels.dart' hide Recipe; // Hide Recipe from moduels.dart to avoid conflict
 import '../../models/recipe.dart';
 import '../../utils/text_formatter.dart';
@@ -10,7 +11,7 @@ class RecipesPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final recipesAsync = ref.watch(recipesStreamProvider);
+    final recipesAsync = ref.watch(myRecipesStreamProvider);
     return Scaffold(
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => showDialog(context: context, builder: (_) => const _AddRecipeDialog()),
@@ -32,51 +33,150 @@ class RecipesPage extends ConsumerWidget {
                         child: Image.network(r.imageUrl!, width: 56, height: 56, fit: BoxFit.cover),
                       )
                     : const SizedBox(width: 56, height: 56, child: Icon(Icons.image_not_supported)),
-                title: Text(r.title),
-                trailing: PopupMenuButton<String>(
-                  onSelected: (value) {
-                    if (value == 'edit') {
-                      showDialog(
-                        context: context,
-                        builder: (_) => _EditRecipeDialog(recipe: r),
-                      );
-                    } else if (value == 'delete') {
-                      showDialog(
-                        context: context,
-                        builder: (context) => AlertDialog(
-                          title: const Text('Delete Recipe'),
-                          content: Text('Are you sure you want to delete "${r.title}"?'),
-                          actions: [
-                            TextButton(
-                              onPressed: () => Navigator.pop(context),
-                              child: const Text('Cancel'),
+                title: Row(
+                  children: [
+                    Expanded(child: Text(r.title)),
+                    Consumer(
+                      builder: (context, ref, child) {
+                        final currentUser = ref.watch(currentUserProvider);
+                        final isOwnRecipe = currentUser?.id == r.authorId;
+                        if (isOwnRecipe) {
+                          return const SizedBox.shrink(); // No indicator for own recipes
+                        } else {
+                          return Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.blue.shade100,
+                              borderRadius: BorderRadius.circular(12),
                             ),
-                            FilledButton(
-                              onPressed: () async {
-                                Navigator.pop(context);
-                                try {
-                                  await ref.read(deleteRecipeProvider(r.id).future);
-                                  // Invalidate the recipes provider to refresh the list
-                                  ref.invalidate(recipesStreamProvider);
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(content: Text('Recipe deleted successfully')),
-                                  );
-                                } catch (e) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(content: Text('Failed to delete recipe: $e')),
-                                  );
-                                }
-                              },
-                              child: const Text('Delete'),
+                            child: Text(
+                              'SAVED',
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.blue.shade700,
+                              ),
                             ),
+                          );
+                        }
+                      },
+                    ),
+                  ],
+                ),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Public/Private toggle (only for own recipes)
+                    Consumer(
+                      builder: (context, ref, child) {
+                        final currentUser = ref.watch(currentUserProvider);
+                        final isOwnRecipe = currentUser?.id == r.authorId;
+                        
+                        if (!isOwnRecipe) {
+                          return const SizedBox.shrink(); // No toggle for saved recipes
+                        }
+                        
+                        return IconButton(
+                          onPressed: () async {
+                            try {
+                              final newVisibility = r.visibility == RecipeVisibility.public 
+                                  ? RecipeVisibility.private 
+                                  : RecipeVisibility.public;
+                              
+                              await ref.read(updateRecipeVisibilityProvider((
+                                recipeId: r.id,
+                                visibility: newVisibility,
+                              )).future);
+                              
+                              // Invalidate the recipes provider to refresh the list
+                              ref.invalidate(myRecipesStreamProvider);
+                              ref.invalidate(userOwnRecipesStreamProvider);
+                              ref.invalidate(publicRecipesStreamProvider);
+                              
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('Recipe is now ${newVisibility.name}'),
+                                ),
+                              );
+                            } catch (e) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text('Failed to update recipe visibility: $e')),
+                              );
+                            }
+                          },
+                          icon: Icon(
+                            r.visibility == RecipeVisibility.public 
+                                ? Icons.public 
+                                : Icons.lock,
+                            color: r.visibility == RecipeVisibility.public 
+                                ? Colors.green 
+                                : Colors.orange,
+                          ),
+                          tooltip: r.visibility == RecipeVisibility.public 
+                              ? 'Make Private' 
+                              : 'Make Public',
+                        );
+                      },
+                    ),
+                    // More options menu (only for own recipes)
+                    Consumer(
+                      builder: (context, ref, child) {
+                        final currentUser = ref.watch(currentUserProvider);
+                        final isOwnRecipe = currentUser?.id == r.authorId;
+                        
+                        if (!isOwnRecipe) {
+                          return const SizedBox.shrink(); // No menu for saved recipes
+                        }
+                        
+                        return PopupMenuButton<String>(
+                          onSelected: (value) {
+                            if (value == 'edit') {
+                              showDialog(
+                                context: context,
+                                builder: (_) => _EditRecipeDialog(recipe: r),
+                              );
+                            } else if (value == 'delete') {
+                              showDialog(
+                                context: context,
+                                builder: (context) => AlertDialog(
+                                  title: const Text('Delete Recipe'),
+                                  content: Text('Are you sure you want to delete "${r.title}"?'),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () => Navigator.pop(context),
+                                      child: const Text('Cancel'),
+                                    ),
+                                    FilledButton(
+                                      onPressed: () async {
+                                        Navigator.pop(context);
+                                        try {
+                                          await ref.read(deleteRecipeProvider(r.id).future);
+                                          // Invalidate the recipes provider to refresh the list
+                                          ref.invalidate(myRecipesStreamProvider);
+                                          ref.invalidate(userOwnRecipesStreamProvider);
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            const SnackBar(content: Text('Recipe deleted successfully')),
+                                          );
+                                        } catch (e) {
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            SnackBar(content: Text('Failed to delete recipe: $e')),
+                                          );
+                                        }
+                                      },
+                                      child: const Text('Delete'),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            }
+                          },
+                          itemBuilder: (context) => [
+                            const PopupMenuItem(value: 'edit', child: Text('Edit')),
+                            const PopupMenuItem(value: 'delete', child: Text('Delete')),
                           ],
-                        ),
-                      );
-                    }
-                  },
-                  itemBuilder: (context) => [
-                    const PopupMenuItem(value: 'edit', child: Text('Edit')),
-                    const PopupMenuItem(value: 'delete', child: Text('Delete')),
+                        );
+                      },
+                    ),
                   ],
                 ),
                 onTap: () {
@@ -327,9 +427,9 @@ class _AddRecipeDialogState extends ConsumerState<_AddRecipeDialog> {
                   try {
                     await ref.read(addRecipeProvider(args).future);
                     // Invalidate all recipe-related providers to refresh the list
-                    ref.invalidate(recipesStreamProvider);
+                    ref.invalidate(myRecipesStreamProvider);
+                    ref.invalidate(userOwnRecipesStreamProvider);
                     ref.invalidate(publicRecipesStreamProvider);
-                    ref.invalidate(userRecipesStreamProvider);
                     if (mounted) Navigator.pop(context);
                   } catch (e) {
                     if (!mounted) return;
@@ -508,7 +608,8 @@ class _EditRecipeDialogState extends ConsumerState<_EditRecipeDialog> {
                     );
                     await ref.read(updateRecipeProvider(args).future);
                     // Invalidate the recipes provider to refresh the list
-                    ref.invalidate(recipesStreamProvider);
+                    ref.invalidate(myRecipesStreamProvider);
+                    ref.invalidate(userOwnRecipesStreamProvider);
                     ref.invalidate(recipeIngredientsProvider(widget.recipe.id));
                     if (mounted) {
                       Navigator.pop(context);

@@ -19,6 +19,9 @@ class Recipe {
   final RecipeVisibility visibility;
   final String language;
   final String? forksFrom;
+  // Author information (populated from profiles join)
+  final String? authorHandle;
+  final String? authorDisplayName;
 
   const Recipe({
     required this.id,
@@ -37,6 +40,8 @@ class Recipe {
     this.visibility = RecipeVisibility.public,
     this.language = 'en',
     this.forksFrom,
+    this.authorHandle,
+    this.authorDisplayName,
   });
 
   factory Recipe.fromMap(Map<String, dynamic> map) {
@@ -57,6 +62,8 @@ class Recipe {
       visibility: _parseVisibility(map['visibility']),
       language: map['language'] as String? ?? 'en',
       forksFrom: map['forks_from'] as String?,
+      authorHandle: map['author_handle'] as String?,
+      authorDisplayName: map['author_display_name'] as String?,
     );
   }
 
@@ -78,6 +85,8 @@ class Recipe {
       'visibility': visibility.name,
       'language': language,
       'forks_from': forksFrom,
+      'author_handle': authorHandle,
+      'author_display_name': authorDisplayName,
     };
   }
 
@@ -98,6 +107,8 @@ class Recipe {
     RecipeVisibility? visibility,
     String? language,
     String? forksFrom,
+    String? authorHandle,
+    String? authorDisplayName,
   }) {
     return Recipe(
       id: id ?? this.id,
@@ -116,6 +127,8 @@ class Recipe {
       visibility: visibility ?? this.visibility,
       language: language ?? this.language,
       forksFrom: forksFrom ?? this.forksFrom,
+      authorHandle: authorHandle ?? this.authorHandle,
+      authorDisplayName: authorDisplayName ?? this.authorDisplayName,
     );
   }
 

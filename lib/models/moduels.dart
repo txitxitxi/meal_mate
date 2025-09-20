@@ -95,6 +95,12 @@ class WeeklyEntry {
   WeeklyEntry({required this.day, required this.recipe});
 }
 
+class MealPlanEntry {
+  final Recipe recipe;
+  final int count;
+  MealPlanEntry({required this.recipe, required this.count});
+}
+
 class ShoppingListItem {
   final String id;
   final String ingredientName;

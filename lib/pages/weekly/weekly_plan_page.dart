@@ -11,7 +11,7 @@ class WeeklyPlanPage extends ConsumerStatefulWidget {
   ConsumerState<WeeklyPlanPage> createState() => _WeeklyPlanPageState();
 }
 
-class _WeeklyPlanPageState extends ConsumerState<WeeklyPlanPage> {
+class _WeeklyPlanPageState extends ConsumerState<WeeklyPlanPage> with TickerProviderStateMixin {
   final List<String> _selectedProteins = ['any'];
   final List<String> _availableProteins = [
     'any',
@@ -28,10 +28,24 @@ class _WeeklyPlanPageState extends ConsumerState<WeeklyPlanPage> {
   int _totalDays = 5;
   int _uniqueRecipeTypes = 1;
   bool _isGenerating = false;
+  
+  late TabController _tabController;
+  
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 2, vsync: this);
+  }
+  
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    final weeklyAsync = ref.watch(weeklyPlanProvider);
+    final mealPlanAsync = ref.watch(mealPlanProvider);
 
     return Scaffold(
       floatingActionButton: FloatingActionButton.extended(
@@ -50,9 +64,27 @@ class _WeeklyPlanPageState extends ConsumerState<WeeklyPlanPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    'Protein Preferences',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                  Row(
+                    children: [
+                      const Expanded(
+                        child: Text(
+                          'Protein Preferences',
+                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.refresh, size: 20),
+                        onPressed: () {
+                          print('Manual refresh triggered');
+                          ref.read(mealPlanRefreshProvider.notifier).state++;
+                          ref.invalidate(mealPlanProvider);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Refreshing meal plan...')),
+                          );
+                        },
+                        tooltip: 'Refresh Meal Plan',
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 8),
                   Wrap(
@@ -96,69 +128,69 @@ class _WeeklyPlanPageState extends ConsumerState<WeeklyPlanPage> {
               ),
             ),
           ),
+          // Tab Bar
+          TabBar(
+            controller: _tabController,
+            tabs: const [
+              Tab(icon: Icon(Icons.calendar_month), text: 'Meal Plan'),
+              Tab(icon: Icon(Icons.shopping_cart), text: 'Shopping List'),
+            ],
+          ),
+          // Tab Content
           Expanded(
-            child: weeklyAsync.when(
-              data: (entries) {
-                // Show a 7-day grid starting today
-                final start = DateTime.now();
-                final days = List.generate(
-                  7,
-                  (i) => DateTime(start.year, start.month, start.day).add(Duration(days: i)),
-                );
-
-                if (entries.isEmpty) {
-                  return const Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.calendar_today, size: 64, color: Colors.grey),
-                        SizedBox(height: 16),
-                        Text('No weekly plan found', style: TextStyle(fontSize: 18, color: Colors.grey)),
-                        SizedBox(height: 8),
-                        Text('Generate a plan to see your meals', style: TextStyle(color: Colors.grey)),
-                      ],
-                    ),
-                  );
-                }
-                
-                // Group recipes by type and count occurrences
-                final recipeCounts = <String, int>{};
-                final recipeDetails = <String, WeeklyEntry>{};
-                
-                for (final entry in entries) {
-                  final recipeTitle = entry.recipe.title;
-                  recipeCounts[recipeTitle] = (recipeCounts[recipeTitle] ?? 0) + 1;
-                  recipeDetails[recipeTitle] = entry;
-                }
-                
-                return ListView.separated(
-                  padding: const EdgeInsets.all(12),
-                  itemBuilder: (context, i) {
-                    final recipeTitle = recipeCounts.keys.elementAt(i);
-                    final count = recipeCounts[recipeTitle]!;
-                    final recipe = recipeDetails[recipeTitle]!.recipe;
-                    
-                    return Card(
-                      child: ListTile(
-                        leading: recipe.imageUrl != null
-                            ? CircleAvatar(backgroundImage: NetworkImage(recipe.imageUrl!))
-                            : const CircleAvatar(child: Icon(Icons.restaurant)),
-                        title: Text(recipeTitle),
-                        subtitle: Text('$count meal${count > 1 ? 's' : ''} planned'),
-                        trailing: Chip(
-                          label: Text('$count'),
-                          backgroundColor: Colors.blue.shade100,
-                          labelStyle: TextStyle(color: Colors.blue.shade700),
+            child: TabBarView(
+              controller: _tabController,
+              children: [
+                // Meal Plan Tab
+                mealPlanAsync.when(
+                  data: (entries) {
+                    if (entries.isEmpty) {
+                      return const Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.calendar_today, size: 64, color: Colors.grey),
+                            SizedBox(height: 16),
+                            Text('No meal plan found', style: TextStyle(fontSize: 18, color: Colors.grey)),
+                            SizedBox(height: 8),
+                            Text('Generate a plan to see your meals', style: TextStyle(color: Colors.grey)),
+                          ],
                         ),
-                      ),
+                      );
+                    }
+                    
+                    return ListView.separated(
+                      padding: const EdgeInsets.all(12),
+                      itemBuilder: (context, i) {
+                        final entry = entries[i];
+                        final recipe = entry.recipe;
+                        final count = entry.count;
+                        
+                        return Card(
+                          child: ListTile(
+                            leading: recipe.imageUrl != null
+                                ? CircleAvatar(backgroundImage: NetworkImage(recipe.imageUrl!))
+                                : const CircleAvatar(child: Icon(Icons.restaurant)),
+                            title: Text(recipe.title),
+                            subtitle: Text('$count meal${count > 1 ? 's' : ''} planned'),
+                            trailing: Chip(
+                              label: Text('$count'),
+                              backgroundColor: Colors.blue.shade100,
+                              labelStyle: TextStyle(color: Colors.blue.shade700),
+                            ),
+                          ),
+                        );
+                      },
+                      separatorBuilder: (_, __) => const SizedBox(height: 8),
+                      itemCount: entries.length,
                     );
                   },
-                  separatorBuilder: (_, __) => const SizedBox(height: 8),
-                  itemCount: recipeCounts.length,
-                );
-              },
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (e, st) => Center(child: Text('Error: $e')),
+                  loading: () => const Center(child: CircularProgressIndicator()),
+                  error: (e, st) => Center(child: Text('Error: $e')),
+                ),
+                // Shopping List Tab
+                _ShoppingListTab(),
+              ],
             ),
           ),
         ],
@@ -242,10 +274,27 @@ class _WeeklyPlanPageState extends ConsumerState<WeeklyPlanPage> {
                     'totalDays': _totalDays,
                     'mealsPerDay': _mealsPerDay,
                   };
-                  await ref.refresh(generatePlanProvider(config).future);
-                  ref.invalidate(weeklyPlanProvider);
-                  // Also refresh shopping list since it's auto-generated
-                  ref.invalidate(shoppingListProvider);
+                  try {
+                    final newPlanId = await ref.refresh(generatePlanProvider(config).future);
+                    
+                    // Use the returned plan ID to confirm the plan was created
+                    print('New meal plan created with ID: $newPlanId');
+                  } catch (e) {
+                    print('Error during meal plan generation: $e');
+                    throw e; // Re-throw to show error to user
+                  }
+                  
+                  // Ensure the database operation is fully complete before refreshing
+                  print('Waiting for database commit...');
+                  
+                  print('Triggering meal plan refresh...');
+                  ref.read(mealPlanRefreshProvider.notifier).state++;
+                  
+      // Also refresh shopping list since it's auto-generated
+      ref.invalidate(shoppingListProvider);
+      ref.read(shoppingListRefreshProvider.notifier).state++;
+                  
+                  print('Refresh trigger value: ${ref.read(mealPlanRefreshProvider)}');
                   
                   // Show success message
                   if (context.mounted) {
@@ -286,7 +335,126 @@ class _WeeklyPlanPageState extends ConsumerState<WeeklyPlanPage> {
   }
 }
 
-bool _sameDay(DateTime a, DateTime b) =>
-    a.year == b.year && a.month == b.month && a.day == b.day;
 
-String _fmt(DateTime d) => '${d.month}/${d.day}';
+class _ShoppingListTab extends ConsumerWidget {
+  const _ShoppingListTab();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final itemsAsync = ref.watch(shoppingListProvider);
+    
+    return Column(
+      children: [
+        Expanded(
+          child: itemsAsync.when(
+            data: (items) {
+              final grouped = _groupByStore(items);
+              
+              if (items.isEmpty) {
+                return const Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.shopping_cart_outlined, size: 64, color: Colors.grey),
+                      SizedBox(height: 16),
+                      Text('No items in shopping list', style: TextStyle(fontSize: 18, color: Colors.grey)),
+                      SizedBox(height: 8),
+                      Text('Generate a weekly plan first, then create a shopping list', 
+                           style: TextStyle(color: Colors.grey)),
+                    ],
+                  ),
+                );
+              }
+              
+              // Sort stores: named stores first, then "No Store" at the end
+              final sortedEntries = grouped.entries.toList()
+                ..sort((a, b) {
+                  if (a.key == 'No Store') return 1;
+                  if (b.key == 'No Store') return -1;
+                  return a.key.compareTo(b.key);
+                });
+              
+              return ListView.separated(
+                padding: const EdgeInsets.all(12),
+                itemBuilder: (context, i) {
+                  final entry = sortedEntries[i];
+                  final storeName = entry.key;
+                  final list = entry.value;
+                  final isNoStore = storeName == 'No Store';
+                  
+                  return Card(
+                    elevation: isNoStore ? 2 : 1,
+                    color: isNoStore ? Colors.orange.shade50 : null,
+                    child: ExpansionTile(
+                      title: Row(
+                        children: [
+                          Icon(
+                            isNoStore ? Icons.warning_amber : Icons.store,
+                            color: isNoStore ? Colors.orange : Colors.blue,
+                            size: 20,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            storeName,
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: isNoStore ? Colors.orange.shade700 : null,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Chip(
+                            label: Text('${list.length} items'),
+                            backgroundColor: isNoStore ? Colors.orange.shade100 : Colors.blue.shade100,
+                            labelStyle: TextStyle(
+                              color: isNoStore ? Colors.orange.shade700 : Colors.blue.shade700,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                      initiallyExpanded: i == 0,
+                      children: list.map((item) => _ShoppingItemTile(item: item)).toList(),
+                    ),
+                  );
+                },
+                separatorBuilder: (_, __) => const SizedBox(height: 8),
+                itemCount: sortedEntries.length,
+              );
+            },
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (e, st) => Center(child: Text('Error: $e')),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+Map<String, List<ShoppingListItem>> _groupByStore(List<ShoppingListItem> items) {
+  final map = <String, List<ShoppingListItem>>{};
+  for (final it in items) {
+    final storeName = it.storeName ?? 'No Store';
+    map.putIfAbsent(storeName, () => []).add(it);
+  }
+  return map;
+}
+
+class _ShoppingItemTile extends ConsumerWidget {
+  const _ShoppingItemTile({required this.item});
+  final ShoppingListItem item;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return CheckboxListTile(
+      value: item.purchased,
+      onChanged: (_) => ref.read(togglePurchasedProvider(item.id).future),
+      title: Text(item.ingredientName),
+      subtitle: Row(
+        children: [
+          if (item.qty != null) Text('${item.qty} '),
+          if (item.unit != null) Text(item.unit!),
+        ],
+      ),
+    );
+  }
+}

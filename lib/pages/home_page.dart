@@ -2,10 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'recipes_page.dart';
+import 'public_recipes_page.dart';
 import 'stores_page.dart';
 import 'weekly/weekly_plan_page.dart';
-import 'shopping/shopping_list_page.dart';
-import '../widgets/custom_header.dart';
 import '../providers/auth_providers.dart';
 
 class HomePage extends ConsumerStatefulWidget {
@@ -16,8 +15,8 @@ class HomePage extends ConsumerStatefulWidget {
 
 class _HomePageState extends ConsumerState<HomePage> {
   int _index = 0;
-  final _tabs = ['/home/recipes', '/home/stores', '/home/weekly', '/home/shopping'];
-  final _pageTitles = ['Recipes', 'Stores', 'Meal Prep', 'Shopping List'];
+  final _tabs = ['/home/public-recipes', '/home/recipes', '/home/stores', '/home/weekly'];
+  final _pageTitles = ['Public Recipes', 'My Recipe', 'Stores', 'Meal Prep'];
 
   @override
   void initState() {
@@ -126,19 +125,19 @@ class _HomePageState extends ConsumerState<HomePage> {
       body: IndexedStack(
         index: _index,
         children: const [
+          PublicRecipesPage(),
           RecipesPage(),
           StoresPage(),
           WeeklyPlanPage(),
-          ShoppingListPage(),
         ],
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _index,
         destinations: const [
-          NavigationDestination(icon: Icon(Icons.book), label: 'Recipes'),
+          NavigationDestination(icon: Icon(Icons.public), label: 'Public Recipes'),
+              NavigationDestination(icon: Icon(Icons.book), label: 'My Recipe'),
           NavigationDestination(icon: Icon(Icons.store), label: 'Stores'),
           NavigationDestination(icon: Icon(Icons.calendar_month), label: 'Meal Prep'),
-          NavigationDestination(icon: Icon(Icons.shopping_cart), label: 'Shopping'),
         ],
         onDestinationSelected: (i) {
           setState(() => _index = i);
