@@ -177,7 +177,7 @@ final reorderStoresProvider = FutureProvider.family<void, List<String>>((ref, st
   print('Store reordering complete!');
 });
 
-// Provider to search stores by ingredient name
+// Provider to search stores by ingredient name (bilingual search)
 final searchStoresByIngredientProvider = FutureProvider.family<List<Map<String, dynamic>>, String>((ref, ingredientName) async {
   if (ingredientName.trim().isEmpty) {
     return [];
@@ -190,7 +190,35 @@ final searchStoresByIngredientProvider = FutureProvider.family<List<Map<String, 
     throw Exception('User must be signed in to search stores');
   }
   
-  // Search for stores that have this ingredient
+  final searchTerm = ingredientName.trim();
+  
+  // Step 1: Find ingredient IDs that match the search term (English names)
+  final englishMatches = await client
+      .from('ingredients')
+      .select('id')
+      .ilike('name', '%$searchTerm%');
+  
+  // Step 2: Find ingredient IDs that match the search term (Chinese aliases)
+  final chineseMatches = await client
+      .from('ingredient_terms')
+      .select('ingredient_id')
+      .eq('locale', 'zh')
+      .ilike('term', '%$searchTerm%');
+  
+  // Combine all matching ingredient IDs
+  final Set<String> matchingIngredientIds = {};
+  for (final match in englishMatches) {
+    matchingIngredientIds.add(match['id'] as String);
+  }
+  for (final match in chineseMatches) {
+    matchingIngredientIds.add(match['ingredient_id'] as String);
+  }
+  
+  if (matchingIngredientIds.isEmpty) {
+    return [];
+  }
+  
+  // Step 3: Find stores that have these ingredients
   final results = await client
       .from('store_items')
       .select('''
@@ -199,13 +227,10 @@ final searchStoresByIngredientProvider = FutureProvider.family<List<Map<String, 
           id,
           name,
           priority
-        ),
-        ingredients!inner(
-          name
         )
       ''')
       .eq('stores.user_id', user.id)
-      .ilike('ingredients.name', '%${ingredientName.trim()}%');
+      .inFilter('ingredient_id', matchingIngredientIds.toList());
   
   // Group by store and return unique stores
   final Map<String, Map<String, dynamic>> uniqueStores = {};

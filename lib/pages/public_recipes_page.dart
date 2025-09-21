@@ -20,9 +20,16 @@ class _PublicRecipesPageState extends ConsumerState<PublicRecipesPage> {
     super.dispose();
   }
 
+  bool _isChinese(String text) {
+    return RegExp(r'[\u4e00-\u9fff]').hasMatch(text);
+  }
+
   @override
   Widget build(BuildContext context) {
-    final recipesAsync = ref.watch(publicRecipesStreamProvider);
+    // Use bilingual search if there's a search query, otherwise show all public recipes
+    final recipesAsync = _searchQuery.isNotEmpty 
+        ? ref.watch(searchRecipesByIngredientProvider(_searchQuery))
+        : ref.watch(publicRecipesStreamProvider);
     
     return Scaffold(
       body: Column(
@@ -33,7 +40,7 @@ class _PublicRecipesPageState extends ConsumerState<PublicRecipesPage> {
             child: TextField(
               controller: _searchController,
               decoration: InputDecoration(
-                hintText: 'Search recipes...',
+                hintText: 'Search by ingredient (e.g., "beef" or "牛肉")...',
                 prefixIcon: const Icon(Icons.search),
                 suffixIcon: _searchController.text.isNotEmpty
                     ? IconButton(
@@ -60,12 +67,8 @@ class _PublicRecipesPageState extends ConsumerState<PublicRecipesPage> {
           Expanded(
             child: recipesAsync.when(
               data: (recipes) {
-                // Filter recipes based on search query
-                final filteredRecipes = recipes.where((recipe) {
-                  if (_searchQuery.isEmpty) return true;
-                  return recipe.title.toLowerCase().contains(_searchQuery) ||
-                         (recipe.description?.toLowerCase().contains(_searchQuery) ?? false);
-                }).toList();
+                // No need to filter since searchRecipesByIngredientProvider already does the filtering
+                final filteredRecipes = recipes;
 
                 if (filteredRecipes.isEmpty) {
                   return Center(
@@ -78,11 +81,34 @@ class _PublicRecipesPageState extends ConsumerState<PublicRecipesPage> {
                           color: Colors.grey,
                         ),
                         const SizedBox(height: 12),
-                        Text(
-                          _searchQuery.isEmpty 
-                              ? 'No public recipes available' 
-                              : 'No recipes found for "$_searchQuery"',
-                          style: const TextStyle(fontSize: 16, color: Colors.grey),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              _searchQuery.isEmpty 
+                                  ? 'No public recipes available' 
+                                  : 'No recipes found for "$_searchQuery"',
+                              style: const TextStyle(fontSize: 16, color: Colors.grey),
+                            ),
+                            if (_searchQuery.isNotEmpty && _isChinese(_searchQuery)) ...[
+                              const SizedBox(width: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: Colors.blue.shade100,
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Text(
+                                  '中文',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.blue.shade700,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
                         ),
                         const SizedBox(height: 6),
                         Text(

@@ -158,6 +158,12 @@ class _IngredientAutocompleteState extends ConsumerState<IngredientAutocomplete>
               final name = ingredient['name'] as String;
               final category = ingredient['category'] as String?;
               final defaultUnit = ingredient['default_unit'] as String?;
+              final matchedTerm = ingredient['matched_term'] as String?;
+              final locale = ingredient['locale'] as String?;
+              final isPrimary = ingredient['is_primary'] as bool? ?? false;
+              
+              // Show matched term if different from name (indicates bilingual match)
+              final showBilingualMatch = matchedTerm != null && matchedTerm != name;
               
               return InkWell(
                 onTap: () {
@@ -183,12 +189,48 @@ class _IngredientAutocompleteState extends ConsumerState<IngredientAutocomplete>
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              name,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w500,
-                              ),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    name,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ),
+                                if (showBilingualMatch) ...[
+                                  const SizedBox(width: 8),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: locale == 'zh' ? Colors.blue.shade100 : Colors.green.shade100,
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Text(
+                                      locale == 'zh' ? '中' : 'EN',
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.bold,
+                                        color: locale == 'zh' ? Colors.blue.shade700 : Colors.green.shade700,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ],
                             ),
+                            if (showBilingualMatch)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 2),
+                                child: Text(
+                                  'Matched: "$matchedTerm"',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: Colors.grey.shade600,
+                                    fontStyle: FontStyle.italic,
+                                  ),
+                                ),
+                              ),
                             if (category != null || defaultUnit != null)
                               Text(
                                 [

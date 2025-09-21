@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/moduels.dart' hide Recipe; // Hide Recipe from moduels.dart to avoid conflict
 import '../models/recipe.dart';
 import '../services/supabase_service.dart';
+import '../services/translation_service.dart';
 import 'auth_providers.dart';
 
 // Helper function to categorize ingredients based on name
@@ -407,25 +408,133 @@ final recipeIngredientsProvider = FutureProvider.family<List<Map<String, dynamic
   return response;
 });
 
-// Provider to search ingredients by name (for autocomplete)
+// Provider to search ingredients by name (for autocomplete) - now bilingual!
 final searchIngredientsProvider = FutureProvider.family<List<Map<String, dynamic>>, String>((ref, query) async {
   if (query.trim().isEmpty) {
     return [];
   }
   
   final client = SupabaseService.client;
+  final searchTerm = query.trim();
   
   try {
-    final response = await client
+    // First, search ingredient_terms table for bilingual support
+    final termsResponse = await client
+        .from('ingredient_terms')
+        .select('''
+          term,
+          locale,
+          is_primary,
+          weight,
+          ingredients!inner(
+            id,
+            name,
+            category,
+            default_unit
+          )
+        ''')
+        .or('term.ilike.%$searchTerm%,term_norm.ilike.%${searchTerm.toLowerCase()}%')
+        .order('is_primary', ascending: false)
+        .order('weight', ascending: false)
+        .order('term')
+        .limit(20);
+    
+    // Group by ingredient to avoid duplicates and return the best match for each ingredient
+    final Map<String, Map<String, dynamic>> uniqueIngredients = {};
+    
+    for (final row in termsResponse) {
+      final ingredient = row['ingredients'] as Map<String, dynamic>;
+      final ingredientId = ingredient['id'] as String;
+      
+      if (!uniqueIngredients.containsKey(ingredientId)) {
+        uniqueIngredients[ingredientId] = {
+          'id': ingredient['id'],
+          'name': ingredient['name'], // Always use original ingredient name for display
+          'category': ingredient['category'],
+          'default_unit': ingredient['default_unit'],
+          'matched_term': row['term'], // The term that matched the search
+          'locale': row['locale'],
+          'is_primary': row['is_primary'],
+        };
+      }
+    }
+    
+    // Also search ingredients table directly for English names that might not be in ingredient_terms
+    final ingredientsResponse = await client
         .from('ingredients')
         .select('id, name, category, default_unit')
-        .ilike('name', '%${query.trim()}%')
+        .or('name.ilike.%$searchTerm%,name_norm.ilike.%${searchTerm.toLowerCase()}%')
         .order('name')
-        .limit(10);
+        .limit(20);
     
-    return response;
+    // Add ingredients that aren't already found in terms search
+    for (final ingredient in ingredientsResponse) {
+      final ingredientId = ingredient['id'] as String;
+      
+      if (!uniqueIngredients.containsKey(ingredientId)) {
+        uniqueIngredients[ingredientId] = {
+          'id': ingredient['id'],
+          'name': ingredient['name'],
+          'category': ingredient['category'],
+          'default_unit': ingredient['default_unit'],
+          'matched_term': ingredient['name'],
+          'locale': 'en',
+          'is_primary': true,
+        };
+      }
+    }
+    
+    return uniqueIngredients.values.toList();
   } catch (e) {
     print('Error searching ingredients: $e');
+    // Final fallback to simple ingredients search
+    try {
+      final fallbackResponse = await client
+          .from('ingredients')
+          .select('id, name, category, default_unit')
+          .ilike('name', '%$searchTerm%')
+          .order('name')
+          .limit(10);
+      
+      return fallbackResponse.map((ingredient) => {
+        ...ingredient,
+        'matched_term': ingredient['name'],
+        'locale': 'en',
+        'is_primary': true,
+      }).toList();
+    } catch (fallbackError) {
+      print('Fallback search also failed: $fallbackError');
+      return [];
+    }
+  }
+});
+
+// Provider to search recipes by ingredient (bilingual search)
+final searchRecipesByIngredientProvider = FutureProvider.family<List<Recipe>, String>((ref, searchTerm) async {
+  if (searchTerm.trim().isEmpty) {
+    return [];
+  }
+  
+  final client = SupabaseService.client;
+  
+  try {
+    // Use the new bilingual search function
+    final response = await client
+        .rpc('search_recipes_by_ingredient', params: {'q': searchTerm.trim()});
+    
+    final recipeIds = response.map((data) => data['recipe_id'] as String).toList();
+    
+    if (recipeIds.isEmpty) return [];
+    
+    final recipes = await client
+        .from('recipes')
+        .select('*')
+        .inFilter('id', recipeIds)
+        .eq('visibility', 'public'); // Only show public recipes in search
+    
+    return recipes.map((data) => Recipe.fromMap(data)).toList();
+  } catch (e) {
+    print('Error searching recipes by ingredient: $e');
     return [];
   }
 });
@@ -491,5 +600,40 @@ final updateRecipeProvider = FutureProvider.family<void, ({
       'quantity': ing.qty,
       'unit': ing.unit ?? defaultUnit,
     });
+  }
+});
+
+// Provider for translation statistics
+final translationStatsProvider = FutureProvider<Map<String, int>>((ref) async {
+  return await TranslationService.getTranslationStats();
+});
+
+// Provider for all translations
+final translationsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
+  return await TranslationService.getAllTranslations();
+});
+
+// Provider for adding new ingredients with auto-translation
+final addIngredientWithTranslationProvider = FutureProvider.family<String, Map<String, dynamic>>((ref, ingredientData) async {
+  try {
+    final client = SupabaseService.client;
+    
+    // Add the ingredient
+    final response = await client
+        .from('ingredients')
+        .insert({
+          'name': ingredientData['name'],
+          'category': ingredientData['category'],
+          'default_unit': ingredientData['default_unit'],
+          'created_by': ingredientData['created_by'],
+        })
+        .select('id, name')
+        .single();
+    
+    // The trigger will automatically add Chinese translation if available
+    return response['name'];
+  } catch (e) {
+    print('Error adding ingredient: $e');
+    rethrow;
   }
 });
