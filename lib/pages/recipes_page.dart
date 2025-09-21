@@ -5,6 +5,7 @@ import '../../providers/auth_providers.dart';
 import '../../models/moduels.dart' hide Recipe; // Hide Recipe from moduels.dart to avoid conflict
 import '../../models/recipe.dart';
 import '../../utils/text_formatter.dart';
+import '../../widgets/ingredient_autocomplete.dart';
 
 class RecipesPage extends ConsumerWidget {
   const RecipesPage({super.key});
@@ -19,12 +20,21 @@ class RecipesPage extends ConsumerWidget {
         label: const Text('Add Recipe'),
       ),
       body: recipesAsync.when(
-        data: (recipes) => ListView.separated(
-          padding: const EdgeInsets.all(12),
-          itemCount: recipes.length,
-          separatorBuilder: (_, __) => const SizedBox(height: 8),
-          itemBuilder: (context, i) {
-            final r = recipes[i];
+        data: (recipes) => RefreshIndicator(
+          onRefresh: () async {
+            // Refresh the recipes
+            ref.invalidate(myRecipesStreamProvider);
+            ref.invalidate(userOwnRecipesStreamProvider);
+            ref.invalidate(userSavedRecipesStreamProvider);
+            // Wait a bit for the refresh to complete
+            await Future.delayed(const Duration(milliseconds: 500));
+          },
+          child: ListView.separated(
+            padding: const EdgeInsets.all(12),
+            itemCount: recipes.length,
+            separatorBuilder: (_, __) => const SizedBox(height: 8),
+            itemBuilder: (context, i) {
+              final r = recipes[i];
             return Card(
               child: ListTile(
                 leading: r.imageUrl != null
@@ -271,7 +281,8 @@ class RecipesPage extends ConsumerWidget {
                 },
               ),
             );
-          },
+            },
+          ),
         ),
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, st) => Center(child: Text('Error: $e')),
@@ -370,9 +381,10 @@ class _AddRecipeDialogState extends ConsumerState<_AddRecipeDialog> {
                     children: [
                       Expanded(
                         flex: 3,
-                        child: TextFormField(
-                          decoration: InputDecoration(labelText: 'Ingredient ${i + 1}'),
-                          onChanged: (v) => ing.name = TextFormatter.toTitleCase(v),
+                        child: IngredientAutocomplete(
+                          controller: TextEditingController(text: ing.name),
+                          labelText: 'Ingredient ${i + 1}',
+                          onChanged: (v) => ing.name = v,
                         ),
                       ),
                       const SizedBox(width: 8),
@@ -548,10 +560,10 @@ class _EditRecipeDialogState extends ConsumerState<_EditRecipeDialog> {
                     children: [
                       Expanded(
                         flex: 3,
-                        child: TextFormField(
+                        child: IngredientAutocomplete(
                           controller: TextEditingController(text: ing.name),
-                          decoration: InputDecoration(labelText: 'Ingredient ${i + 1}'),
-                          onChanged: (v) => ing.name = TextFormatter.toTitleCase(v),
+                          labelText: 'Ingredient ${i + 1}',
+                          onChanged: (v) => ing.name = v,
                         ),
                       ),
                       const SizedBox(width: 8),

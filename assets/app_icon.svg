@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <!-- Light orange background with rounded corners -->
+  <rect width="1024" height="1024" rx="180" ry="180" fill="#FFF5E6"/>
+  
+  <!-- Orange plate with gradient effect -->
+  <defs>
+    <radialGradient id="plateGradient" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" style="stop-color:#FF8C00;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#FF6500;stop-opacity:1" />
+    </radialGradient>
+  </defs>
+  
+  <!-- Plate base -->
+  <ellipse cx="512" cy="620" rx="240" ry="220" fill="url(#plateGradient)"/>
+  <ellipse cx="512" cy="600" rx="220" ry="200" fill="#FFA500"/>
+  <ellipse cx="512" cy="580" rx="200" ry="180" fill="#FF8C00"/>
+  
+  <!-- Chopsticks - positioned at angles -->
+  <!-- Left chopstick -->
+  <rect x="320" y="180" width="12" height="400" rx="6" fill="#8B4513" transform="rotate(-20 326 380)"/>
+  <rect x="322" y="182" width="8" height="396" rx="4" fill="#A0522D" transform="rotate(-20 326 380)"/>
+  
+  <!-- Right chopstick -->
+  <rect x="692" y="180" width="12" height="400" rx="6" fill="#8B4513" transform="rotate(20 698 380)"/>
+  <rect x="694" y="182" width="8" height="396" rx="4" fill="#A0522D" transform="rotate(20 698 380)"/>
+  
+  <!-- Fork -->
+  <rect x="380" y="280" width="8" height="320" rx="4" fill="#E8E8E8"/>
+  <rect x="372" y="280" width="24" height="50" rx="12" fill="#E8E8E8"/>
+  <!-- Fork tines -->
+  <rect x="375" y="285" width="5" height="30" fill="#E8E8E8"/>
+  <rect x="382" y="285" width="5" height="30" fill="#E8E8E8"/>
+  <rect x="389" y="285" width="5" height="30" fill="#E8E8E8"/>
+  <rect x="396" y="285" width="5" height="30" fill="#E8E8E8"/>
+  
+  <!-- Knife -->
+  <rect x="624" y="280" width="8" height="320" rx="4" fill="#E8E8E8"/>
+  <polygon points="620,280 640,300 640,320 620,310" fill="#E8E8E8"/>
+  <!-- Knife blade -->
+  <polygon points="620,310 635,325 635,350 620,335" fill="#F5F5F5"/>
+  
+  <!-- Spoon -->
+  <ellipse cx="512" cy="300" rx="30" ry="18" fill="#E8E8E8"/>
+  <rect x="507" y="300" width="10" height="280" rx="5" fill="#E8E8E8"/>
+  
+  <!-- Decorative steam lines -->
+  <path d="M 450 520 Q 460 500 470 520" stroke="#FFD700" stroke-width="4" fill="none" opacity="0.8"/>
+  <path d="M 480 510 Q 490 490 500 510" stroke="#FFD700" stroke-width="4" fill="none" opacity="0.8"/>
+  <path d="M 540 510 Q 550 490 560 510" stroke="#FFD700" stroke-width="4" fill="none" opacity="0.8"/>
+  <path d="M 570 520 Q 580 500 590 520" stroke="#FFD700" stroke-width="4" fill="none" opacity="0.8"/>
+  
+  <!-- Small food elements on plate -->
+  <circle cx="480" cy="580" r="8" fill="#FF6B35"/>
+  <circle cx="520" cy="590" r="6" fill="#FF6B35"/>
+  <circle cx="550" cy="575" r="7" fill="#FF6B35"/>
+  <circle cx="490" cy="610" r="5" fill="#FF6B35"/>
+</svg>

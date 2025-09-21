@@ -4,7 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'recipes_page.dart';
 import 'public_recipes_page.dart';
 import 'stores_page.dart';
-import 'weekly/weekly_plan_page.dart';
+import 'meal_plan/meal_plan_page.dart';
 import '../providers/auth_providers.dart';
 
 class HomePage extends ConsumerStatefulWidget {
@@ -128,7 +128,7 @@ class _HomePageState extends ConsumerState<HomePage> {
           PublicRecipesPage(),
           RecipesPage(),
           StoresPage(),
-          WeeklyPlanPage(),
+          MealPlanPage(),
         ],
       ),
       bottomNavigationBar: NavigationBar(

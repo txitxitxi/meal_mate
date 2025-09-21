@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/store_provider.dart';
 import '../../models/moduels.dart';
 import '../../utils/text_formatter.dart';
+import '../../widgets/ingredient_autocomplete.dart';
 
 class StoresPage extends ConsumerStatefulWidget {
   const StoresPage({super.key});
@@ -47,24 +48,6 @@ class _StoresPageState extends ConsumerState<StoresPage> {
     final storesAsync = ref.watch(storesStreamProvider);
     
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Stores'),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: () {
-              // Force refresh stores
-              ref.read(storesRefreshProvider.notifier).state++;
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Refreshing stores...')),
-              );
-            },
-            tooltip: 'Refresh Stores',
-          ),
-        ],
-      ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => showDialog(context: context, builder: (_) => const _AddStoreDialog()),
         icon: const Icon(Icons.add_business),
@@ -72,7 +55,7 @@ class _StoresPageState extends ConsumerState<StoresPage> {
       ),
       body: Column(
         children: [
-          // Search bar
+          // Search bar with refresh button
           Container(
             padding: const EdgeInsets.all(16),
             child: TextField(
@@ -80,15 +63,30 @@ class _StoresPageState extends ConsumerState<StoresPage> {
               decoration: InputDecoration(
                 hintText: 'Search ingredients (e.g., "beef", "broccoli")',
                 prefixIcon: const Icon(Icons.search),
-                suffixIcon: _searchController.text.isNotEmpty
-                    ? IconButton(
+                suffixIcon: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (_searchController.text.isNotEmpty)
+                      IconButton(
                         icon: const Icon(Icons.clear),
                         onPressed: () {
                           _searchController.clear();
                           setState(() => _isSearching = false);
                         },
-                      )
-                    : null,
+                      ),
+                    IconButton(
+                      icon: const Icon(Icons.refresh),
+                      onPressed: () {
+                        // Force refresh stores
+                        ref.read(storesRefreshProvider.notifier).state++;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Refreshing stores...')),
+                        );
+                      },
+                      tooltip: 'Refresh Stores',
+                    ),
+                  ],
+                ),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
@@ -399,21 +397,11 @@ class _StoreItemsState extends ConsumerState<_StoreItems> {
           Row(
             children: [
               Expanded(
-                child: TextField(
+                child: IngredientAutocomplete(
                   controller: _ctrl,
-                  decoration: const InputDecoration(
-                    hintText: 'Add ingredient this store sells (e.g., Broccoli)',
-                  ),
+                  hintText: 'Add ingredient this store sells (e.g., Broccoli)',
                   onChanged: (value) {
-                    // Auto-format as user types
-                    final cursorPosition = _ctrl.selection.baseOffset;
-                    final formatted = TextFormatter.toTitleCase(value);
-                    if (formatted != value) {
-                      _ctrl.value = TextEditingValue(
-                        text: formatted,
-                        selection: TextSelection.collapsed(offset: cursorPosition),
-                      );
-                    }
+                    // The autocomplete widget handles formatting
                   },
                 ),
               ),

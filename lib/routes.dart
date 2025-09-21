@@ -4,7 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'pages/recipes_page.dart';
 import 'pages/public_recipes_page.dart';
 import 'pages/stores_page.dart';
-import 'pages/weekly/weekly_plan_page.dart';
+import 'pages/meal_plan/meal_plan_page.dart';
 
 GoRouter createRouter() => GoRouter(
   routes: [
@@ -15,7 +15,7 @@ GoRouter createRouter() => GoRouter(
         GoRoute(path: 'public-recipes', builder: (c, s) => const PublicRecipesPage()),
         GoRoute(path: 'recipes', builder: (c, s) => const RecipesPage()),
         GoRoute(path: 'stores', builder: (c, s) => const StoresPage()),
-        GoRoute(path: 'weekly', builder: (c, s) => const WeeklyPlanPage()),
+        GoRoute(path: 'weekly', builder: (c, s) => const MealPlanPage()),
       ],
     ),
   ],
@@ -39,7 +39,7 @@ class _RootShellState extends State<RootShell> {
         const PublicRecipesPage(),
         const RecipesPage(),
         const StoresPage(),
-        const WeeklyPlanPage(),
+        const MealPlanPage(),
       ][_index],
       bottomNavigationBar: NavigationBar(
         selectedIndex: _index,
