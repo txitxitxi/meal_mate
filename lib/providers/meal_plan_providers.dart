@@ -1,3 +1,4 @@
+// lib/providers/meal_plan_providers.dart
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/moduels.dart';
 import '../services/supabase_service.dart';
@@ -9,7 +10,7 @@ final mealPlanRefreshProvider = StateProvider<int>((ref) => 0);
 // Add a refresh trigger for shopping lists
 final shoppingListRefreshProvider = StateProvider<int>((ref) => 0);
 
-final mealPlanProvider = StreamProvider<List<MealPlanEntry>>((ref) async* {
+final mealPlanProvider = StreamProvider<List<MealPlanSummary>>((ref) async* {
   // Watch the refresh trigger to force refresh when needed
   final refreshTrigger = ref.watch(mealPlanRefreshProvider);
   print('Meal plan provider triggered with refresh: $refreshTrigger');
@@ -17,7 +18,7 @@ final mealPlanProvider = StreamProvider<List<MealPlanEntry>>((ref) async* {
   final user = ref.watch(currentUserProvider);
   if (user == null) {
     print('No user found, returning empty meal plan');
-    yield <MealPlanEntry>[];
+    yield <MealPlanSummary>[];
     return;
   }
 
@@ -25,7 +26,7 @@ final mealPlanProvider = StreamProvider<List<MealPlanEntry>>((ref) async* {
   
   // Force a fresh query every time by adding the refresh trigger to the query
   final rows = await SupabaseService.client
-      .from('weekly_plans')
+      .from('meal_plans')
       .select('*')
       .eq('user_id', user.id)
       .order('created_at', ascending: false)
@@ -40,7 +41,7 @@ final mealPlanProvider = StreamProvider<List<MealPlanEntry>>((ref) async* {
     print('LOADING PLAN WITH ID: ${plan['id']}');
   }
   
-  final entries = <MealPlanEntry>[];
+  final entries = <MealPlanSummary>[];
   
   if (rows.isNotEmpty) {
     final plan = rows.first;
@@ -80,7 +81,7 @@ final mealPlanProvider = StreamProvider<List<MealPlanEntry>>((ref) async* {
         final count = entry.value;
         final recipeData = recipes[recipeId];
         
-        entries.add(MealPlanEntry(
+        entries.add(MealPlanSummary(
           recipe: Recipe(
             id: recipeId,
             title: recipeData?['title'] as String? ?? 'Unknown Recipe',
@@ -93,7 +94,7 @@ final mealPlanProvider = StreamProvider<List<MealPlanEntry>>((ref) async* {
   }
   
   print('Meal plan entries created: ${entries.length}');
-  print('Entries: ${entries.map((e) => '${e.recipe.title} (${e.count}x)').toList()}');
+  print('Entries: ${entries.map((e) => '${e.recipe.title}').toList()}');
   
   yield entries;
 });
@@ -127,7 +128,8 @@ final generatePlanProvider = FutureProvider.family<String, Map<String, dynamic>>
     savedRecipes = await client
         .from('recipes')
         .select('id, title, image_url')
-        .inFilter('id', savedRecipeIds.map((s) => s['recipe_id'] as String).toList());
+        .inFilter('id', savedRecipeIds.map((s) => s['recipe_id'] as String).toList())
+        .eq('visibility', 'public'); // Only load public recipes
   }
   
   // Combine user's own recipes and saved recipes, removing duplicates
@@ -272,7 +274,7 @@ final generatePlanProvider = FutureProvider.family<String, Map<String, dynamic>>
     
     // Use upsert to update existing plan or create new one
     try {
-      final weeklyPlanResponse = await client.from('weekly_plans').upsert({
+      final weeklyPlanResponse = await client.from('meal_plans').upsert({
         'user_id': user.id,
         'week_start_date': weekStart.toIso8601String().split('T')[0],
         'plan': planData,
@@ -333,11 +335,13 @@ Future<List<ShoppingListItem>> _loadShoppingListForUser(String userId) async {
   try {
     print('Loading shopping list for user: $userId');
     
-    // Get user's weekly plans
+    // Get user's most recent weekly plan only
     final userWeeklyPlans = await SupabaseService.client
-        .from('weekly_plans')
-        .select('id')
-        .eq('user_id', userId);
+        .from('meal_plans')
+        .select('id, created_at')
+        .eq('user_id', userId)
+        .order('created_at', ascending: false)
+        .limit(1);
     
     print('Found ${userWeeklyPlans.length} weekly plans for user');
     
@@ -346,20 +350,22 @@ Future<List<ShoppingListItem>> _loadShoppingListForUser(String userId) async {
       return <ShoppingListItem>[];
     }
     
-    final userWeeklyPlanIds = userWeeklyPlans.map((p) => p['id'] as String).toList();
-    print('Weekly plan IDs: $userWeeklyPlanIds');
+    // Only use the most recent weekly plan
+    final latestPlan = userWeeklyPlans.first;
+    final latestPlanId = latestPlan['id'] as String;
+    print('Using latest weekly plan ID: $latestPlanId');
     
-    // Get shopping list items for these weekly plans
-    print('🔍 Querying shopping_list_items for weekly plan IDs: $userWeeklyPlanIds');
+    // Get shopping list items for the latest weekly plan only
+    print('🔍 Querying shopping_list_items for latest weekly plan ID: $latestPlanId');
     final shoppingItems = await SupabaseService.client
         .from('shopping_list_items')
         .select('*')
-        .inFilter('weekly_plan_id', userWeeklyPlanIds)
+        .eq('meal_plan_id', latestPlanId)
         .order('id');
     
     print('🔍 Found ${shoppingItems.length} shopping list items');
     if (shoppingItems.isNotEmpty) {
-      print('🔍 Shopping list items: ${shoppingItems.map((item) => '${item['ingredient_id']} (plan: ${item['weekly_plan_id']})').toList()}');
+      print('🔍 Shopping list items: ${shoppingItems.map((item) => '${item['ingredient_id']} (plan: ${item['meal_plan_id']})').toList()}');
     }
     
     if (shoppingItems.isEmpty) {
@@ -436,7 +442,7 @@ final generateShoppingListProvider = FutureProvider<void>((ref) async {
   
   // Get the current weekly plan
   final weeklyPlans = await client
-      .from('weekly_plans')
+      .from('meal_plans')
       .select('id, plan')
       .eq('user_id', user.id)
       .order('week_start_date', ascending: false)
@@ -524,7 +530,7 @@ final generateShoppingListProvider = FutureProvider<void>((ref) async {
   }
   
   // Clear existing shopping list items
-  await client.from('shopping_list_items').delete().eq('weekly_plan_id', weeklyPlanId);
+  await client.from('shopping_list_items').delete().eq('meal_plan_id', weeklyPlanId);
   
   // Get stores and their items to categorize ingredients
   final stores = await client
@@ -619,7 +625,7 @@ final generateShoppingListProvider = FutureProvider<void>((ref) async {
       // Insert shopping list item
       print('💾 Inserting shopping list item: ingredient=$ingredientId, store=$storeId, plan=$weeklyPlanId');
       await client.from('shopping_list_items').insert({
-        'weekly_plan_id': weeklyPlanId,
+        'meal_plan_id': weeklyPlanId,
         'ingredient_id': ingredientId,
         'store_id': storeId,
         'quantity': ingredient['quantity'],
@@ -696,7 +702,7 @@ Future<void> _generateShoppingListFromPlan(
   }
   
   // Clear existing shopping list items
-  await client.from('shopping_list_items').delete().eq('weekly_plan_id', weeklyPlanId);
+  await client.from('shopping_list_items').delete().eq('meal_plan_id', weeklyPlanId);
   
   // Get stores and their items to categorize ingredients
   final storeItems = await client
@@ -827,7 +833,7 @@ Future<void> _generateShoppingListFromPlan(
       // Insert shopping list item
       print('💾 Inserting shopping list item: ingredient=$ingredientId, store=$storeId, plan=$weeklyPlanId');
       await client.from('shopping_list_items').insert({
-        'weekly_plan_id': weeklyPlanId,
+        'meal_plan_id': weeklyPlanId,
         'ingredient_id': ingredientId,
         'store_id': storeId,
         'quantity': ingredient['quantity'],

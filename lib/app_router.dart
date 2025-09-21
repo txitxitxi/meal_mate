@@ -11,7 +11,7 @@ import 'pages/profile_setup_page.dart';
 import 'pages/recipes_page.dart';
 import 'pages/public_recipes_page.dart';
 import 'pages/stores_page.dart';
-import 'pages/weekly/weekly_plan_page.dart';
+import 'pages/meal_plan/meal_plan_page.dart';
 import 'providers/auth_providers.dart';
 
 class GoRouterRefreshStream extends ChangeNotifier {
@@ -66,7 +66,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/weekly',
         name: 'weekly',
-        builder: (context, state) => const WeeklyPlanPage(),
+        builder: (context, state) => const MealPlanPage(),
       ),
     ],
     redirect: (context, state) async {

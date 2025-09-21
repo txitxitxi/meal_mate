@@ -89,16 +89,16 @@ class StoreItem {
       );
 }
 
-class WeeklyEntry {
+class MealPlanEntry {
   final DateTime day;
   final Recipe recipe;
-  WeeklyEntry({required this.day, required this.recipe});
+  MealPlanEntry({required this.day, required this.recipe});
 }
 
-class MealPlanEntry {
+class MealPlanSummary {
   final Recipe recipe;
   final int count;
-  MealPlanEntry({required this.recipe, required this.count});
+  MealPlanSummary({required this.recipe, required this.count});
 }
 
 class ShoppingListItem {

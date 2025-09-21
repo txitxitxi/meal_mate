@@ -236,7 +236,8 @@ final userSavedRecipesStreamProvider = StreamProvider<List<Recipe>>((ref) {
         final recipes = await SupabaseService.client
             .from('recipes')
             .select('*')
-            .inFilter('id', recipeIds);
+            .inFilter('id', recipeIds)
+            .eq('visibility', 'public'); // Only load public recipes
         
         // Maintain the order from recipe_saves
         final recipeMap = Map.fromEntries(
@@ -308,13 +309,8 @@ final addRecipeProvider = FutureProvider.family<void, ({
                    client.auth.currentUser?.email?.split('@')[0],
   });
   
-  // Also ensure user has a proper profile
-  await client.from('profiles').upsert({
-    'user_id': uid,
-    'handle': client.auth.currentUser?.email?.split('@')[0]?.toLowerCase() ?? 'user',
-    'display_name': client.auth.currentUser?.userMetadata?['full_name'] ?? 
-                   client.auth.currentUser?.email?.split('@')[0],
-  });
+  // Note: Profiles are handled separately in the auth flow
+  // Don't try to upsert profiles here as it may cause RLS issues
   
   final insert = <String, dynamic>{
     'title': args.title,
@@ -359,7 +355,6 @@ final addRecipeProvider = FutureProvider.family<void, ({
             'name': name,
             'default_unit': ing.unit,
             'category': category,
-            'created_by': uid,
           })
           .select('id, default_unit, category')
           .single();
@@ -410,6 +405,29 @@ final recipeIngredientsProvider = FutureProvider.family<List<Map<String, dynamic
       .eq('recipe_id', recipeId);
   
   return response;
+});
+
+// Provider to search ingredients by name (for autocomplete)
+final searchIngredientsProvider = FutureProvider.family<List<Map<String, dynamic>>, String>((ref, query) async {
+  if (query.trim().isEmpty) {
+    return [];
+  }
+  
+  final client = SupabaseService.client;
+  
+  try {
+    final response = await client
+        .from('ingredients')
+        .select('id, name, category, default_unit')
+        .ilike('name', '%${query.trim()}%')
+        .order('name')
+        .limit(10);
+    
+    return response;
+  } catch (e) {
+    print('Error searching ingredients: $e');
+    return [];
+  }
 });
 
 final updateRecipeProvider = FutureProvider.family<void, ({
