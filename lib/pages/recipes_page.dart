@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/recipe_providers.dart';
@@ -5,6 +6,7 @@ import '../../providers/auth_providers.dart';
 import '../../models/moduels.dart' hide Recipe; // Hide Recipe from moduels.dart to avoid conflict
 import '../../models/recipe.dart';
 import '../../utils/text_formatter.dart';
+import '../../utils/protein_preferences.dart';
 import '../../widgets/ingredient_autocomplete.dart';
 
 class RecipesPage extends ConsumerWidget {
@@ -305,18 +307,17 @@ class _AddRecipeDialogState extends ConsumerState<_AddRecipeDialog> {
   bool _saving = false;
   String _selectedProtein = 'none';
   
-  final List<String> _availableProteins = [
-    'none',
-    'chicken',
-    'beef', 
-    'pork',
-    'fish',
-    'seafood',
-    'vegetarian',
-    'vegan'
-  ];
+  final List<String> _availableProteins = ProteinPreferences.all;
 
   void _addRow() => setState(() => _ings.add(IngredientInput()));
+
+  String _formatTitleForSave(String title) {
+    // Only format if the text doesn't contain Chinese characters
+    if (!RegExp(r'[\u4e00-\u9fff]').hasMatch(title)) {
+      return TextFormatter.toTitleCase(title);
+    }
+    return title;
+  }
 
   ProteinPreference _parseProteinPreference(String protein) {
     switch (protein.toLowerCase()) {
@@ -324,11 +325,16 @@ class _AddRecipeDialogState extends ConsumerState<_AddRecipeDialog> {
         return ProteinPreference.chicken;
       case 'beef':
         return ProteinPreference.beef;
+      case 'egg':
+        return ProteinPreference.egg;
+      case 'fish':
+        return ProteinPreference.fish;
       case 'pork':
         return ProteinPreference.pork;
-      case 'fish':
       case 'seafood':
-        return ProteinPreference.fish;
+        return ProteinPreference.seafood;
+      case 'tofu':
+        return ProteinPreference.tofu;
       case 'vegetarian':
         return ProteinPreference.vegetarian;
       case 'vegan':
@@ -354,17 +360,7 @@ class _AddRecipeDialogState extends ConsumerState<_AddRecipeDialog> {
                   controller: _titleCtrl,
                   decoration: const InputDecoration(labelText: 'Title'),
                   validator: (v) => (v == null || v.trim().isEmpty) ? 'Required' : null,
-                  onChanged: (value) {
-                    // Auto-format recipe title as user types
-                    final cursorPosition = _titleCtrl.selection.baseOffset;
-                    final formatted = TextFormatter.toRecipeTitleCase(value);
-                    if (formatted != value) {
-                      _titleCtrl.value = TextEditingValue(
-                        text: formatted,
-                        selection: TextSelection.collapsed(offset: cursorPosition),
-                      );
-                    }
-                  },
+                  textCapitalization: TextCapitalization.none,
                 ),
                 const SizedBox(height: 8),
                 TextFormField(
@@ -425,7 +421,7 @@ class _AddRecipeDialogState extends ConsumerState<_AddRecipeDialog> {
                   if (!_formKey.currentState!.validate()) return;
                   setState(() => _saving = true);
                   final args = (
-                    title: TextFormatter.toRecipeTitleCase(_titleCtrl.text.trim()),
+                    title: _formatTitleForSave(_titleCtrl.text.trim()),
                     description: null,
                     photoUrl: _photoCtrl.text.trim().isEmpty ? null : _photoCtrl.text.trim(),
                     protein: _parseProteinPreference(_selectedProtein),
@@ -486,6 +482,14 @@ class _EditRecipeDialogState extends ConsumerState<_EditRecipeDialog> {
   void _addRow() => setState(() => _ings.add(IngredientInput()));
   void _removeRow(int index) => setState(() => _ings.removeAt(index));
 
+  String _formatTitleForSave(String title) {
+    // Only format if the text doesn't contain Chinese characters
+    if (!RegExp(r'[\u4e00-\u9fff]').hasMatch(title)) {
+      return TextFormatter.toTitleCase(title);
+    }
+    return title;
+  }
+
   @override
   Widget build(BuildContext context) {
     // Load existing ingredients reactively
@@ -533,17 +537,7 @@ class _EditRecipeDialogState extends ConsumerState<_EditRecipeDialog> {
                   controller: _titleCtrl,
                   decoration: const InputDecoration(labelText: 'Title'),
                   validator: (v) => (v == null || v.trim().isEmpty) ? 'Required' : null,
-                  onChanged: (value) {
-                    // Auto-format recipe title as user types
-                    final cursorPosition = _titleCtrl.selection.baseOffset;
-                    final formatted = TextFormatter.toRecipeTitleCase(value);
-                    if (formatted != value) {
-                      _titleCtrl.value = TextEditingValue(
-                        text: formatted,
-                        selection: TextSelection.collapsed(offset: cursorPosition),
-                      );
-                    }
-                  },
+                  textCapitalization: TextCapitalization.none,
                 ),
                 const SizedBox(height: 8),
                 TextFormField(
@@ -614,7 +608,7 @@ class _EditRecipeDialogState extends ConsumerState<_EditRecipeDialog> {
                   try {
                     final args = (
                       recipeId: widget.recipe.id,
-                      title: TextFormatter.toRecipeTitleCase(_titleCtrl.text.trim()),
+                      title: _formatTitleForSave(_titleCtrl.text.trim()),
                       photoUrl: _photoCtrl.text.trim().isEmpty ? null : _photoCtrl.text.trim(),
                       ingredients: _ings,
                     );

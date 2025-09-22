@@ -2,7 +2,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/meal_plan_providers.dart';
+import '../../providers/home_inventory_providers.dart';
 import '../../models/moduels.dart';
+import '../../utils/protein_preferences.dart';
 
 class MealPlanPage extends ConsumerStatefulWidget {
   const MealPlanPage({super.key});
@@ -13,16 +15,7 @@ class MealPlanPage extends ConsumerStatefulWidget {
 
 class _MealPlanPageState extends ConsumerState<MealPlanPage> with TickerProviderStateMixin {
   final List<String> _selectedProteins = ['any'];
-  final List<String> _availableProteins = [
-    'any',
-    'chicken',
-    'beef', 
-    'pork',
-    'fish',
-    'seafood',
-    'vegetarian',
-    'vegan'
-  ];
+  final List<String> _availableProteins = ProteinPreferences.mealPlanning;
   
   int _mealsPerDay = 1;
   int _totalDays = 5;
@@ -535,33 +528,51 @@ class _ShoppingListTab extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final itemsAsync = ref.watch(shoppingListProvider);
+    final homeInventoryAsync = ref.watch(homeInventoryStreamProvider);
     
     return Column(
       children: [
         Expanded(
           child: itemsAsync.when(
             data: (items) {
-              final grouped = _groupByStore(items);
+              return homeInventoryAsync.when(
+                data: (homeItems) {
+                  final grouped = _groupByStore(items);
+                  
+                  // Add home inventory as a special section
+                  if (homeItems.isNotEmpty) {
+                    grouped['🏠 Home'] = homeItems.map((item) => ShoppingListItem(
+                      id: item.id,
+                      ingredientName: item.ingredientName,
+                      storeId: null,
+                      storeName: 'Home',
+                      unit: item.unit,
+                      qty: item.quantity,
+                      purchased: false,
+                    )).toList();
+                  }
+                  
+                  if (items.isEmpty && homeItems.isEmpty) {
+                    return const Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.shopping_cart_outlined, size: 64, color: Colors.grey),
+                          SizedBox(height: 16),
+                          Text('No items in shopping list', style: TextStyle(fontSize: 18, color: Colors.grey)),
+                          SizedBox(height: 8),
+                          Text('Generate a weekly plan first, then create a shopping list', 
+                               style: TextStyle(color: Colors.grey)),
+                        ],
+                      ),
+                    );
+                  }
               
-              if (items.isEmpty) {
-                return const Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.shopping_cart_outlined, size: 64, color: Colors.grey),
-                      SizedBox(height: 16),
-                      Text('No items in shopping list', style: TextStyle(fontSize: 18, color: Colors.grey)),
-                      SizedBox(height: 8),
-                      Text('Generate a weekly plan first, then create a shopping list', 
-                           style: TextStyle(color: Colors.grey)),
-                    ],
-                  ),
-                );
-              }
-              
-              // Sort stores: named stores first, then "No Store" at the end
+              // Sort stores: Home first, then named stores, then "No Store" at the end
               final sortedEntries = grouped.entries.toList()
                 ..sort((a, b) {
+                  if (a.key == '🏠 Home') return -1;
+                  if (b.key == '🏠 Home') return 1;
                   if (a.key == 'No Store') return 1;
                   if (b.key == 'No Store') return -1;
                   return a.key.compareTo(b.key);
@@ -574,16 +585,17 @@ class _ShoppingListTab extends ConsumerWidget {
                   final storeName = entry.key;
                   final list = entry.value;
                   final isNoStore = storeName == 'No Store';
+                  final isHome = storeName == '🏠 Home';
                   
                   return Card(
                     elevation: isNoStore ? 2 : 1,
-                    color: isNoStore ? Colors.orange.shade50 : null,
+                    color: isNoStore ? Colors.orange.shade50 : (isHome ? Colors.green.shade50 : null),
                     child: ExpansionTile(
                       title: Row(
                         children: [
                           Icon(
-                            isNoStore ? Icons.warning_amber : Icons.store,
-                            color: isNoStore ? Colors.orange : Colors.blue,
+                            isHome ? Icons.home : (isNoStore ? Icons.warning_amber : Icons.store),
+                            color: isHome ? Colors.green : (isNoStore ? Colors.orange : Colors.blue),
                             size: 20,
                           ),
                           const SizedBox(width: 8),
@@ -597,9 +609,9 @@ class _ShoppingListTab extends ConsumerWidget {
                           const SizedBox(width: 8),
                           Chip(
                             label: Text('${list.length} items'),
-                            backgroundColor: isNoStore ? Colors.orange.shade100 : Colors.blue.shade100,
+                            backgroundColor: isHome ? Colors.green.shade100 : (isNoStore ? Colors.orange.shade100 : Colors.blue.shade100),
                             labelStyle: TextStyle(
-                              color: isNoStore ? Colors.orange.shade700 : Colors.blue.shade700,
+                              color: isHome ? Colors.green.shade700 : (isNoStore ? Colors.orange.shade700 : Colors.blue.shade700),
                               fontSize: 12,
                             ),
                           ),
@@ -612,6 +624,10 @@ class _ShoppingListTab extends ConsumerWidget {
                 },
                 separatorBuilder: (_, __) => const SizedBox(height: 8),
                 itemCount: sortedEntries.length,
+              );
+                },
+                loading: () => const Center(child: CircularProgressIndicator()),
+                error: (e, st) => Center(child: Text('Error loading home inventory: $e')),
               );
             },
             loading: () => const Center(child: CircularProgressIndicator()),

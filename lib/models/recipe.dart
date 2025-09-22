@@ -1,4 +1,4 @@
-enum ProteinPreference { none, chicken, beef, pork, fish, vegetarian, vegan }
+enum ProteinPreference { none, chicken, beef, egg, fish, pork, seafood, tofu, vegetarian, vegan }
 
 enum RecipeVisibility { public, unlisted, private }
 

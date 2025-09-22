@@ -2,7 +2,9 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/moduels.dart';
 import '../services/supabase_service.dart';
+import '../utils/protein_preferences.dart';
 import 'auth_providers.dart';
+import 'home_inventory_providers.dart';
 
 // Add a refresh trigger for meal plans
 final mealPlanRefreshProvider = StateProvider<int>((ref) => 0);
@@ -167,27 +169,15 @@ final generatePlanProvider = FutureProvider.family<String, Map<String, dynamic>>
     }
   }
 
-    // Map UI protein preferences to specific ingredient name patterns
-    final proteinPreferenceToPatterns = {
-      'chicken': ['chicken', 'turkey', 'duck'],
-      'beef': ['beef', 'steak', 'ground beef'],
-      'pork': ['pork', 'bacon', 'ham'],
-      'fish': ['salmon', 'tuna', 'cod', 'fish'],
-      'seafood': ['shrimp', 'crab', 'lobster', 'scallop'],
-      'vegetarian': ['bean', 'lentil', 'chickpea', 'tofu', 'cheese', 'milk', 'yogurt', 'almond', 'walnut'],
-      'vegan': ['bean', 'lentil', 'chickpea', 'tofu', 'almond', 'walnut'],
-    };
+    // Use centralized protein preference patterns
+    final proteinPreferenceToPatterns = ProteinPreferences.ingredientPatterns;
     
     // Get all relevant ingredient name patterns for the selected preferences
     final relevantPatterns = <String>[];
     for (final preference in proteinPreferences) {
       if (preference == 'none') {
         // If 'none' is selected, include all patterns
-        relevantPatterns.addAll([
-          'chicken', 'turkey', 'duck', 'beef', 'steak', 'pork', 'bacon', 'ham',
-          'salmon', 'tuna', 'cod', 'fish', 'shrimp', 'crab', 'lobster',
-          'bean', 'lentil', 'chickpea', 'tofu', 'cheese', 'milk', 'yogurt', 'almond', 'walnut'
-        ]);
+        relevantPatterns.addAll(ProteinPreferences.allIngredientPatterns);
         break;
       } else if (proteinPreferenceToPatterns.containsKey(preference)) {
         relevantPatterns.addAll(proteinPreferenceToPatterns[preference]!);
@@ -197,25 +187,64 @@ final generatePlanProvider = FutureProvider.family<String, Map<String, dynamic>>
     // Score recipes by protein preferences but don't exclude any
     final recipeScores = <Map<String, dynamic>, double>{};
     
+    print('🔍 Processing ${allRecipes.length} recipes for protein scoring...');
+    for (final recipe in allRecipes) {
+      print('  - ${recipe['title']}');
+    }
+    
     for (final recipe in allRecipes) {
       final recipeId = recipe['id'] as String;
       final ingredientNames = recipeIngredientMap[recipeId] ?? [];
       
       double proteinScore = 0;
       
-      // Check if recipe has any ingredient names that match preferences
-      final hasMatchingProtein = ingredientNames.any((ingredientName) {
-        return relevantPatterns.any((pattern) => ingredientName.contains(pattern));
-      });
+      // Check how many protein preferences this recipe matches
+      int matchingProteins = 0;
+      for (final preference in proteinPreferences) {
+        if (preference == 'none') continue; // Skip 'none' preference
+        
+        final patterns = proteinPreferenceToPatterns[preference] ?? [];
+        final hasThisProtein = ingredientNames.any((ingredientName) {
+          return patterns.any((pattern) => 
+            ingredientName.toLowerCase().contains(pattern.toLowerCase()));
+        });
+        
+        if (hasThisProtein) {
+          matchingProteins++;
+        }
+      }
       
-      // Give higher score to recipes that match protein preferences
-      if (hasMatchingProtein) {
-        proteinScore = 10; // High score for matching recipes
+      // Give higher score for matching more protein preferences
+      if (matchingProteins > 0) {
+        proteinScore = 10 + (matchingProteins - 1) * 5; // Base 10 + 5 bonus per additional protein
       } else {
         proteinScore = 1; // Low but non-zero score for non-matching recipes
       }
       
       recipeScores[recipe] = proteinScore;
+      
+      // Debug logging for Tomato Eggs and 牛肉炒饭 specifically
+      if (recipe['title']?.toString().toLowerCase().contains('tomato eggs') == true || 
+          recipe['title']?.toString().contains('牛肉炒饭') == true) {
+        print('🔍 DEBUG ${recipe['title']}:');
+        print('  - Ingredients: $ingredientNames');
+        print('  - Selected preferences: $proteinPreferences');
+        print('  - Matching proteins: $matchingProteins out of ${proteinPreferences.length}');
+        print('  - Protein score: $proteinScore');
+        
+        // Debug each ingredient
+        for (final ingredient in ingredientNames) {
+          for (final preference in proteinPreferences) {
+            if (preference == 'none') continue;
+            final patterns = proteinPreferenceToPatterns[preference] ?? [];
+            final matches = patterns.any((pattern) => 
+              ingredient.toLowerCase().contains(pattern.toLowerCase()));
+            if (matches) {
+              print('    ✅ "$ingredient" matches "$preference" pattern');
+            }
+          }
+        }
+      }
       
       print('Recipe: ${recipe['title']} - Protein score: $proteinScore');
     }
@@ -235,7 +264,7 @@ final generatePlanProvider = FutureProvider.family<String, Map<String, dynamic>>
     final weekStart = today.subtract(Duration(days: daysFromMonday));
     
     // Select unique recipes based on configuration, protein preferences, and store optimization
-    final selectedRecipes = await _selectOptimalRecipes(client, recipesToUse, uniqueRecipeTypes, recipeScores);
+    final selectedRecipes = await _selectOptimalRecipes(client, recipesToUse, uniqueRecipeTypes, recipeScores, user.id);
     final totalMeals = totalDays * mealsPerDay;
     
     print('Configuration: $uniqueRecipeTypes unique types, $totalDays days, $mealsPerDay meals/day = $totalMeals total meals');
@@ -701,6 +730,33 @@ Future<void> _generateShoppingListFromPlan(
     }
   }
   
+  // Get home inventory to exclude from shopping list
+  final homeInventory = await client
+      .from('home_inventory')
+      .select('ingredient_name')
+      .eq('user_id', userId);
+  
+  final homeIngredientNames = homeInventory
+      .map((item) => (item['ingredient_name'] as String).toLowerCase())
+      .toSet();
+  
+  print('🏠 Found ${homeIngredientNames.length} home inventory items: $homeIngredientNames');
+  
+  // Filter out ingredients that are at home
+  final shoppingIngredients = <String, Map<String, dynamic>>{};
+  for (final entry in ingredientMap.entries) {
+    final ingredientName = entry.key;
+    final ingredientData = entry.value;
+    
+    if (!homeIngredientNames.contains(ingredientName.toLowerCase())) {
+      shoppingIngredients[ingredientName] = ingredientData;
+    } else {
+      print('🏠 Excluding "$ingredientName" from shopping list (available at home)');
+    }
+  }
+  
+  print('🛒 After filtering home inventory: ${shoppingIngredients.length} ingredients need shopping');
+  
   // Clear existing shopping list items
   await client.from('shopping_list_items').delete().eq('meal_plan_id', weeklyPlanId);
   
@@ -786,7 +842,7 @@ Future<void> _generateShoppingListFromPlan(
   final unassignedIngredients = <Map<String, dynamic>>[];
   
   // First pass: assign ingredients to stores where they're available
-  for (final ingredient in ingredientMap.values) {
+  for (final ingredient in shoppingIngredients.values) {
     final ingredientName = ingredient['name'] as String;
     final storeId = ingredientToStore[ingredientName];
     
@@ -843,7 +899,7 @@ Future<void> _generateShoppingListFromPlan(
     }
   }
   
-  print('Auto-generated shopping list with ${ingredientMap.length} ingredients');
+  print('Auto-generated shopping list with ${shoppingIngredients.length} ingredients');
 }
 
 // Helper function to select optimal recipes that minimize store visits
@@ -852,10 +908,23 @@ Future<List<Map<String, dynamic>>> _selectOptimalRecipes(
   List<Map<String, dynamic>> availableRecipes,
   int uniqueRecipeTypes,
   Map<Map<String, dynamic>, double> proteinScores,
+  String userId,
 ) async {
   if (availableRecipes.isEmpty) return [];
   
-  print('Selecting optimal recipes to minimize store visits while considering protein preferences...');
+  print('Selecting optimal recipes to minimize store visits while considering protein preferences and home inventory...');
+  
+  // Get home inventory to prioritize recipes with home ingredients
+  final homeInventory = await client
+      .from('home_inventory')
+      .select('ingredient_name')
+      .eq('user_id', userId);
+  
+  final homeIngredientNames = homeInventory
+      .map((item) => (item['ingredient_name'] as String).toLowerCase())
+      .toSet();
+  
+  print('🏠 Home inventory ingredients: $homeIngredientNames');
   
   // Get store priorities
   final stores = await client
@@ -867,6 +936,8 @@ Future<List<Map<String, dynamic>>> _selectOptimalRecipes(
   for (final store in stores) {
     storePriorities[store['id'] as String] = store['priority'] as int? ?? 10;
   }
+  
+  print('🏪 Store priorities: $storePriorities');
   
   // Get all store items to understand ingredient availability
   final storeItems = await client
@@ -882,7 +953,7 @@ Future<List<Map<String, dynamic>>> _selectOptimalRecipes(
     }
   }
   
-  // Get ingredients for each recipe and combine protein + store optimization scores
+  // Get ingredients for each recipe and combine protein + store + home inventory scores
   final combinedScores = <Map<String, dynamic>, double>{};
   
   for (final recipe in availableRecipes) {
@@ -896,53 +967,88 @@ Future<List<Map<String, dynamic>>> _selectOptimalRecipes(
     
     double storeScore = 0;
     int totalIngredients = 0;
+    int homeIngredients = 0;
+    int noStoreIngredients = 0;
     final storeUsage = <String, int>{};
+    int actualStores = 0;
     
     for (final ri in recipeIngredients) {
       final ingredientName = ri['ingredients']?['name'] as String?;
       if (ingredientName != null) {
         totalIngredients++;
-        final availableStores = ingredientToStores[ingredientName] ?? [];
         
-        if (availableStores.isNotEmpty) {
-          // Find the highest priority store that has this ingredient
-          availableStores.sort((a, b) {
-            final priorityA = storePriorities[a] ?? 10;
-            final priorityB = storePriorities[b] ?? 10;
-            return priorityA.compareTo(priorityB);
-          });
-          
-          final bestStore = availableStores.first;
-          storeUsage[bestStore] = (storeUsage[bestStore] ?? 0) + 1;
-          
-          // Score based on store priority (lower number = higher priority = better score)
-          final priority = storePriorities[bestStore] ?? 10;
-          storeScore += (11 - priority); // Invert priority so higher priority = higher score
+        // Check if ingredient is available at home first
+        if (homeIngredientNames.contains(ingredientName.toLowerCase())) {
+          homeIngredients++;
+          print('🏠 Recipe ${recipe['name']} uses home ingredient: $ingredientName');
         } else {
-          // Penalty for ingredients not available at any store
-          storeScore -= 5;
+          // Check if this ingredient is available in stores
+          final availableStores = ingredientToStores[ingredientName] ?? [];
+          
+          if (availableStores.isNotEmpty) {
+            // Find the highest priority store that has this ingredient
+            availableStores.sort((a, b) {
+              final priorityA = storePriorities[a] ?? 10;
+              final priorityB = storePriorities[b] ?? 10;
+              return priorityA.compareTo(priorityB);
+            });
+            
+            final bestStore = availableStores.first;
+            storeUsage[bestStore] = (storeUsage[bestStore] ?? 0) + 1;
+            
+            // Score based on store priority (lower number = higher priority = better score)
+            final priority = storePriorities[bestStore] ?? 10;
+            final ingredientScore = (11 - priority); // Invert priority so higher priority = higher score
+            storeScore += ingredientScore;
+            
+            // Debug logging for store scoring
+            if (recipe['title']?.toString().toLowerCase().contains('tomato eggs') == true) {
+              print('    🛒 Ingredient "$ingredientName" -> Store priority $priority -> Score +$ingredientScore');
+            }
+          } else {
+            // Track ingredients not available at any store
+            noStoreIngredients++;
+            storeScore -= 5;
+          }
         }
       }
     }
     
     if (totalIngredients > 0) {
-      // Bonus for recipes that use fewer unique stores
-      final uniqueStores = storeUsage.keys.length;
-      final consolidationBonus = totalIngredients / uniqueStores; // Higher is better
+      // Count actual stores needed (including "No Store" as a store)
+      actualStores = storeUsage.keys.length + (noStoreIngredients > 0 ? 1 : 0);
+      final consolidationBonus = totalIngredients / actualStores; // Higher is better
       storeScore += consolidationBonus * 2;
       
       // Penalty for recipes that require many stores
-      if (uniqueStores > 2) {
-        storeScore -= (uniqueStores - 2) * 3;
+      if (actualStores > 2) {
+        storeScore -= (actualStores - 2) * 3;
       }
+      
+      // Don't add home inventory bonus - home ingredients already reduce store visits
+      // which is the real benefit. Scoring them separately creates double-counting.
     }
     
-    // Combine protein preference score with store optimization score
+    // Combine protein preference score with store optimization and home inventory scores
     final proteinScore = proteinScores[recipe] ?? 1;
     final combinedScore = proteinScore * 5 + storeScore; // Weight protein preferences more heavily
     
     combinedScores[recipe] = combinedScore;
-    print('Recipe "${recipe['title']}": protein=${proteinScore.toStringAsFixed(1)}, store=${storeScore.toStringAsFixed(1)}, combined=${combinedScore.toStringAsFixed(1)}, stores=${storeUsage.keys.length}, ingredients=$totalIngredients');
+    
+    // Debug logging for Tomato Eggs specifically
+    if (recipe['title']?.toString().toLowerCase().contains('tomato eggs') == true) {
+      print('🍅 FINAL DEBUG Tomato Eggs:');
+      print('  - Protein score: ${proteinScore.toStringAsFixed(1)}');
+      print('  - Store score: ${storeScore.toStringAsFixed(1)}');
+      print('  - Combined score: ${combinedScore.toStringAsFixed(1)}');
+      print('  - Actual stores needed: $actualStores (${storeUsage.keys.length} real stores + ${noStoreIngredients > 0 ? 1 : 0} no-store)');
+      print('  - Total ingredients: $totalIngredients');
+      print('  - Home ingredients: $homeIngredients/$totalIngredients');
+      print('  - No-store ingredients: $noStoreIngredients');
+      print('  - Store usage: $storeUsage');
+    }
+    
+    print('Recipe "${recipe['title']}": protein=${proteinScore.toStringAsFixed(1)}, store=${storeScore.toStringAsFixed(1)}, combined=${combinedScore.toStringAsFixed(1)}, stores=$actualStores, ingredients=$totalIngredients, home=${homeIngredients}/$totalIngredients, no-store=$noStoreIngredients');
   }
   
   // Sort recipes by combined score (highest first) and take the top ones
