@@ -254,3 +254,81 @@ final searchStoresByIngredientProvider = FutureProvider.family<List<Map<String, 
   
   return storeList;
 });
+
+// Provider to delete a store item
+final deleteStoreItemProvider = FutureProvider.family<void, String>((ref, storeItemId) async {
+  final client = SupabaseService.client;
+  final user = client.auth.currentUser;
+  
+  if (user == null) {
+    throw Exception('User must be signed in to delete store items');
+  }
+  
+  print('Deleting store item: $storeItemId');
+  
+  // First verify that the store item belongs to a store owned by the current user
+  final storeItem = await client
+      .from('store_items')
+      .select('''
+        id,
+        store_id,
+        stores!inner(
+          id,
+          user_id
+        )
+      ''')
+      .eq('id', storeItemId)
+      .eq('stores.user_id', user.id)
+      .maybeSingle();
+  
+  if (storeItem == null) {
+    throw Exception('Store item not found or does not belong to current user');
+  }
+  
+  // Delete the store item
+  await client
+      .from('store_items')
+      .delete()
+      .eq('id', storeItemId);
+  
+  print('Successfully deleted store item: $storeItemId');
+});
+
+// Provider to check if an ingredient matches a search term (bilingual)
+final ingredientMatchesSearchProvider = FutureProvider.family<bool, ({String ingredientName, String searchTerm})>((ref, args) async {
+  if (args.searchTerm.trim().isEmpty) {
+    return false;
+  }
+  
+  final client = SupabaseService.client;
+  final searchTerm = args.searchTerm.trim().toLowerCase();
+  final ingredientName = args.ingredientName.toLowerCase();
+  
+  // First check direct English name match
+  if (ingredientName.contains(searchTerm)) {
+    return true;
+  }
+  
+  // Then check if the ingredient has Chinese aliases that match
+  final ingredientResponse = await client
+      .from('ingredients')
+      .select('id')
+      .eq('name', args.ingredientName)
+      .maybeSingle();
+  
+  if (ingredientResponse == null) {
+    return false;
+  }
+  
+  final ingredientId = ingredientResponse['id'] as String;
+  
+  // Check Chinese aliases
+  final chineseMatches = await client
+      .from('ingredient_terms')
+      .select('term')
+      .eq('ingredient_id', ingredientId)
+      .eq('locale', 'zh')
+      .ilike('term', '%$searchTerm%');
+  
+  return chineseMatches.isNotEmpty;
+});

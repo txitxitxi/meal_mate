@@ -8,6 +8,12 @@ class TextFormatter {
   static String toTitleCase(String text) {
     if (text.isEmpty) return text;
     
+    // Check if the entire text contains Chinese characters
+    if (RegExp(r'[\u4e00-\u9fff]').hasMatch(text)) {
+      // Don't apply capitalization to Chinese text
+      return text;
+    }
+    
     // Split by spaces and format each word
     final words = text.trim().split(' ');
     final formattedWords = words.map((word) {
@@ -34,6 +40,12 @@ class TextFormatter {
   /// Formats recipe titles with special handling for common words
   static String toRecipeTitleCase(String text) {
     if (text.isEmpty) return text;
+    
+    // Check if the entire text contains Chinese characters
+    if (RegExp(r'[\u4e00-\u9fff]').hasMatch(text)) {
+      // Don't apply capitalization to Chinese text
+      return text;
+    }
     
     final commonWords = {
       'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by',
@@ -67,6 +79,12 @@ class TextFormatter {
   
   static String _capitalizeWord(String word) {
     if (word.isEmpty) return word;
+    
+    // Check if the word contains Chinese characters
+    if (RegExp(r'[\u4e00-\u9fff]').hasMatch(word)) {
+      // Don't apply capitalization to Chinese text
+      return word;
+    }
     
     // Handle special cases like parentheses and percentages
     final cleanWord = word.replaceAll(RegExp(r'[^\w\s%()]'), '');

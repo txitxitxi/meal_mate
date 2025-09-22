@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/store_provider.dart';
+import '../../providers/home_inventory_providers.dart';
 import '../../models/moduels.dart';
 import '../../utils/text_formatter.dart';
 import '../../widgets/ingredient_autocomplete.dart';
@@ -19,6 +20,7 @@ class _StoresPageState extends ConsumerState<StoresPage> {
   bool _isSearching = false;
   String? _expandedStoreId;
   String? _highlightedIngredient;
+  bool _homeInventoryExpanded = false;
 
   @override
   void dispose() {
@@ -96,6 +98,8 @@ class _StoresPageState extends ConsumerState<StoresPage> {
               },
             ),
           ),
+          // Home Inventory Section
+          _buildHomeInventorySection(),
           // Content based on search state
           Expanded(
             child: _isSearching 
@@ -279,6 +283,30 @@ class _StoresPageState extends ConsumerState<StoresPage> {
       error: (e, st) => Center(child: Text('Error: $e')),
     );
   }
+
+  Widget _buildHomeInventorySection() {
+    final homeInventoryAsync = ref.watch(homeInventoryStreamProvider);
+    
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      child: ExpansionTile(
+        leading: Icon(Icons.home, color: Colors.green.shade600, size: 20),
+        title: const Text('Home Inventory', style: TextStyle(fontSize: 16)),
+        subtitle: homeInventoryAsync.when(
+          data: (items) => Text('${items.length} items', style: const TextStyle(fontSize: 12)),
+          loading: () => const Text('Loading...', style: TextStyle(fontSize: 12)),
+          error: (_, __) => const Text('Error', style: TextStyle(fontSize: 12)),
+        ),
+        initiallyExpanded: false,
+        onExpansionChanged: (expanded) {
+          setState(() => _homeInventoryExpanded = expanded);
+        },
+        children: [
+          _HomeInventoryContent(),
+        ],
+      ),
+    );
+  }
 }
 
 class _DraggableStoreTile extends StatelessWidget {
@@ -415,13 +443,13 @@ class _StoreItemsState extends ConsumerState<_StoreItems> {
               spacing: 8,
               runSpacing: 8,
               children: items.map((it) {
-                final isHighlighted = widget.highlightedIngredient != null && 
-                    it.ingredientName.toLowerCase().contains(widget.highlightedIngredient!.toLowerCase());
-                
-                return Chip(
-                  label: Text(it.ingredientName),
-                  backgroundColor: isHighlighted ? Colors.yellow.shade200 : null,
-                  side: isHighlighted ? BorderSide(color: Colors.orange.shade400, width: 2) : null,
+                return _DeletableStoreItemChip(
+                  storeItem: it,
+                  searchTerm: widget.highlightedIngredient,
+                  onDeleted: () {
+                    // Invalidate the store items provider to refresh the list
+                    ref.invalidate(storeItemsProvider(widget.storeId));
+                  },
                 );
               }).toList(),
             ),
@@ -588,6 +616,488 @@ class _AddStoreDialogState extends ConsumerState<_AddStoreDialog> {
               : const Text('Save'),
         ),
       ],
+    );
+  }
+}
+
+class _DeletableStoreItemChip extends ConsumerStatefulWidget {
+  const _DeletableStoreItemChip({
+    required this.storeItem,
+    this.searchTerm,
+    required this.onDeleted,
+  });
+
+  final StoreItem storeItem;
+  final String? searchTerm;
+  final VoidCallback onDeleted;
+
+  @override
+  ConsumerState<_DeletableStoreItemChip> createState() => _DeletableStoreItemChipState();
+}
+
+class _DeletableStoreItemChipState extends ConsumerState<_DeletableStoreItemChip> {
+  bool _isDeleting = false;
+
+  Future<void> _deleteItem() async {
+    if (_isDeleting) return;
+
+    setState(() => _isDeleting = true);
+
+    try {
+      await ref.read(deleteStoreItemProvider(widget.storeItem.id).future);
+      widget.onDeleted();
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Removed "${widget.storeItem.ingredientName}" from store'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to remove ingredient: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isDeleting = false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Check if this ingredient should be highlighted based on search term
+    final shouldHighlight = widget.searchTerm != null && 
+        widget.storeItem.ingredientName.toLowerCase().contains(widget.searchTerm!.toLowerCase());
+    
+    // For Chinese search terms, we need to check the database
+    final isChineseSearch = widget.searchTerm != null && 
+        RegExp(r'[\u4e00-\u9fff]').hasMatch(widget.searchTerm!);
+    
+    return Dismissible(
+      key: Key(widget.storeItem.id),
+      direction: DismissDirection.endToStart,
+      background: Container(
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.only(right: 16),
+        decoration: BoxDecoration(
+          color: Colors.red.shade100,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Icon(
+          Icons.delete,
+          color: Colors.red.shade600,
+          size: 24,
+        ),
+      ),
+      confirmDismiss: (direction) async {
+        // Show confirmation dialog
+        final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Remove Ingredient'),
+            content: Text('Remove "${widget.storeItem.ingredientName}" from this store?'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                style: FilledButton.styleFrom(
+                  backgroundColor: Colors.red,
+                ),
+                child: const Text('Remove'),
+              ),
+            ],
+          ),
+        );
+        return confirmed ?? false;
+      },
+      onDismissed: (direction) {
+        _deleteItem();
+      },
+      child: InkWell(
+        onTap: null, // Disable tap on the entire chip
+        child: isChineseSearch
+            ? _BilingualHighlightChip(
+                storeItem: widget.storeItem,
+                searchTerm: widget.searchTerm!,
+                isDeleting: _isDeleting,
+                onDelete: _deleteItem,
+              )
+            : Chip(
+                deleteIcon: _isDeleting
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : Icon(
+                        Icons.close,
+                        size: 14,
+                        color: Colors.grey.shade600,
+                      ),
+                onDeleted: _deleteItem,
+                label: Text(widget.storeItem.ingredientName),
+                backgroundColor: shouldHighlight ? Colors.yellow.shade200 : null,
+                side: shouldHighlight ? BorderSide(color: Colors.orange.shade400, width: 2) : null,
+              ),
+      ),
+    );
+  }
+}
+
+class _BilingualHighlightChip extends ConsumerWidget {
+  const _BilingualHighlightChip({
+    required this.storeItem,
+    required this.searchTerm,
+    required this.isDeleting,
+    required this.onDelete,
+  });
+
+  final StoreItem storeItem;
+  final String searchTerm;
+  final bool isDeleting;
+  final VoidCallback onDelete;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final matchAsync = ref.watch(ingredientMatchesSearchProvider((
+      ingredientName: storeItem.ingredientName,
+      searchTerm: searchTerm,
+    )));
+
+    return matchAsync.when(
+      data: (shouldHighlight) => Chip(
+        deleteIcon: isDeleting
+            ? const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : Icon(
+                Icons.close,
+                size: 14,
+                color: Colors.grey.shade600,
+              ),
+        onDeleted: onDelete,
+        label: Text(storeItem.ingredientName),
+        backgroundColor: shouldHighlight ? Colors.yellow.shade200 : null,
+        side: shouldHighlight ? BorderSide(color: Colors.orange.shade400, width: 2) : null,
+      ),
+      loading: () => Chip(
+        deleteIcon: isDeleting
+            ? const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : Icon(
+                Icons.close,
+                size: 14,
+                color: Colors.grey.shade600,
+              ),
+        onDeleted: onDelete,
+        label: Text(storeItem.ingredientName),
+      ),
+      error: (_, __) => Chip(
+        deleteIcon: isDeleting
+            ? const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : Icon(
+                Icons.close,
+                size: 14,
+                color: Colors.grey.shade600,
+              ),
+        onDeleted: onDelete,
+        label: Text(storeItem.ingredientName),
+      ),
+    );
+  }
+}
+
+class _HomeInventoryContent extends ConsumerStatefulWidget {
+  const _HomeInventoryContent();
+
+  @override
+  ConsumerState<_HomeInventoryContent> createState() => _HomeInventoryContentState();
+}
+
+class _HomeInventoryContentState extends ConsumerState<_HomeInventoryContent> {
+  final _ingredientCtrl = TextEditingController();
+  final _unitCtrl = TextEditingController();
+  final _quantityCtrl = TextEditingController();
+
+  @override
+  void dispose() {
+    _ingredientCtrl.dispose();
+    _unitCtrl.dispose();
+    _quantityCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final homeInventoryAsync = ref.watch(homeInventoryStreamProvider);
+
+    return Padding(
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Add new item section - more compact
+          Row(
+            children: [
+              Expanded(
+                flex: 2,
+                child: IngredientAutocomplete(
+                  controller: _ingredientCtrl,
+                  hintText: 'Ingredient',
+                  onChanged: (value) {
+                    // Handle ingredient selection
+                  },
+                ),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: TextField(
+                  controller: _quantityCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Qty',
+                    border: OutlineInputBorder(),
+                    isDense: true,
+                  ),
+                  keyboardType: TextInputType.number,
+                ),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: TextField(
+                  controller: _unitCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Unit',
+                    border: OutlineInputBorder(),
+                    isDense: true,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 6),
+              _AddHomeInventoryButton(
+                ingredientCtrl: _ingredientCtrl,
+                unitCtrl: _unitCtrl,
+                quantityCtrl: _quantityCtrl,
+                onAdded: () {
+                  _ingredientCtrl.clear();
+                  _unitCtrl.clear();
+                  _quantityCtrl.clear();
+                },
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          // Current home inventory items
+          const Text('Items at Home:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+          const SizedBox(height: 6),
+          homeInventoryAsync.when(
+            data: (items) => Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: items.map((item) {
+                return _DeletableHomeInventoryChip(
+                  item: item,
+                  onDeleted: () {
+                    ref.invalidate(homeInventoryStreamProvider);
+                  },
+                );
+              }).toList(),
+            ),
+            loading: () => const Padding(
+              padding: EdgeInsets.all(4.0),
+              child: CircularProgressIndicator(),
+            ),
+            error: (e, st) => Text('Error: $e', style: const TextStyle(fontSize: 12)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AddHomeInventoryButton extends ConsumerStatefulWidget {
+  const _AddHomeInventoryButton({
+    required this.ingredientCtrl,
+    required this.unitCtrl,
+    required this.quantityCtrl,
+    required this.onAdded,
+  });
+
+  final TextEditingController ingredientCtrl;
+  final TextEditingController unitCtrl;
+  final TextEditingController quantityCtrl;
+  final VoidCallback onAdded;
+
+  @override
+  ConsumerState<_AddHomeInventoryButton> createState() => _AddHomeInventoryButtonState();
+}
+
+class _AddHomeInventoryButtonState extends ConsumerState<_AddHomeInventoryButton> {
+  bool _saving = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 40,
+      child: FilledButton(
+        onPressed: _saving ? null : _addItem,
+        child: _saving 
+            ? const SizedBox(height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2))
+            : const Text('Add', style: TextStyle(fontSize: 12)),
+      ),
+    );
+  }
+
+  Future<void> _addItem() async {
+    final ingredientName = widget.ingredientCtrl.text.trim();
+    if (ingredientName.isEmpty) return;
+
+    setState(() => _saving = true);
+
+    try {
+      final quantity = double.tryParse(widget.quantityCtrl.text.trim());
+      final unit = widget.unitCtrl.text.trim().isEmpty ? null : widget.unitCtrl.text.trim();
+
+      await ref.read(addHomeInventoryItemProvider((
+        ingredientName: ingredientName,
+        unit: unit,
+        quantity: quantity,
+      )).future);
+
+      ref.invalidate(homeInventoryStreamProvider);
+      widget.onAdded();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Added "$ingredientName" to home inventory'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to add item: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+}
+
+class _DeletableHomeInventoryChip extends ConsumerStatefulWidget {
+  const _DeletableHomeInventoryChip({
+    required this.item,
+    required this.onDeleted,
+  });
+
+  final HomeInventoryItem item;
+  final VoidCallback onDeleted;
+
+  @override
+  ConsumerState<_DeletableHomeInventoryChip> createState() => _DeletableHomeInventoryChipState();
+}
+
+class _DeletableHomeInventoryChipState extends ConsumerState<_DeletableHomeInventoryChip> {
+  bool _isDeleting = false;
+
+  Future<void> _deleteItem() async {
+    if (_isDeleting) return;
+
+    setState(() => _isDeleting = true);
+
+    try {
+      await ref.read(deleteHomeInventoryItemProvider(widget.item.id).future);
+      widget.onDeleted();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Removed "${widget.item.ingredientName}" from home inventory'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to remove item: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isDeleting = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final quantityText = widget.item.quantity != null ? '${widget.item.quantity}' : '';
+    final unitText = widget.item.unit != null ? ' ${widget.item.unit}' : '';
+    final displayText = quantityText.isNotEmpty 
+        ? '${widget.item.ingredientName} ($quantityText$unitText)'
+        : widget.item.ingredientName;
+
+    return Chip(
+      label: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.home, size: 16, color: Colors.green.shade600),
+          const SizedBox(width: 4),
+          Text(displayText),
+          const SizedBox(width: 4),
+          if (_isDeleting)
+            const SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          else
+            IconButton(
+              icon: Icon(
+                Icons.close,
+                size: 14,
+                color: Colors.grey.shade600,
+              ),
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(
+                minWidth: 24,
+                minHeight: 24,
+              ),
+              onPressed: _deleteItem,
+              tooltip: 'Remove from home inventory',
+            ),
+        ],
+      ),
+      backgroundColor: Colors.green.shade50,
+      side: BorderSide(color: Colors.green.shade200),
     );
   }
 }

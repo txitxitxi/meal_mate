@@ -130,3 +130,27 @@ class ShoppingListItem {
         purchased: (m['purchased'] as bool?) ?? false,
       );
 }
+
+class HomeInventoryItem {
+  final String id;
+  final String ingredientName;
+  final String? unit;
+  final double? quantity;
+  final DateTime createdAt;
+
+  HomeInventoryItem({
+    required this.id,
+    required this.ingredientName,
+    this.unit,
+    this.quantity,
+    required this.createdAt,
+  });
+
+  factory HomeInventoryItem.fromMap(Map<String, dynamic> m) => HomeInventoryItem(
+        id: m['id'] as String,
+        ingredientName: m['ingredient_name'] as String,
+        unit: m['unit'] as String?,
+        quantity: (m['quantity'] as num?)?.toDouble(),
+        createdAt: DateTime.parse(m['created_at'] as String),
+      );
+}
