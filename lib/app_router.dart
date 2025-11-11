@@ -3,8 +3,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-
 import 'pages/home_page.dart';
 import 'pages/login_page.dart';
 import 'pages/profile_setup_page.dart';
@@ -13,6 +11,7 @@ import 'pages/public_recipes_page.dart';
 import 'pages/stores_page.dart';
 import 'pages/meal_plan/meal_plan_page.dart';
 import 'providers/auth_providers.dart';
+import 'services/supabase_service.dart';
 
 class GoRouterRefreshStream extends ChangeNotifier {
   GoRouterRefreshStream(Stream<dynamic> stream) {
@@ -27,11 +26,11 @@ class GoRouterRefreshStream extends ChangeNotifier {
 }
 
 final appRouterProvider = Provider<GoRouter>((ref) {
-  final authStream = ref.watch(authStateProvider.stream);
+  final authChanges = SupabaseService.client.auth.onAuthStateChange;
 
   return GoRouter(
     initialLocation: '/home',
-    refreshListenable: GoRouterRefreshStream(authStream),
+    refreshListenable: GoRouterRefreshStream(authChanges),
     routes: [
       GoRoute(
         path: '/login',
@@ -72,7 +71,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     redirect: (context, state) async {
       final container = ProviderScope.containerOf(context);
       final authState = await container.read(authStateProvider.future);
-      final userProfile = container.read(userProfileProvider);
+      final profile = await container.read(userProfileProvider.future);
       
       final session = authState.session;
       final currentPath = state.matchedLocation;
@@ -84,7 +83,6 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       }
       
       // Authenticated but no profile yet
-      final profile = await userProfile;
       if (profile == null) {
         if (currentPath == '/profile-setup' || currentPath == '/login') return null;
         return '/profile-setup';

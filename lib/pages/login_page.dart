@@ -61,9 +61,9 @@ class _LoginPageState extends ConsumerState<LoginPage> {
       );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Check your email for confirmation link'),
-            backgroundColor: Colors.green,
+          SnackBar(
+            content: const Text('Check your email for confirmation link'),
+            backgroundColor: Theme.of(context).colorScheme.primary,
           ),
         );
       }

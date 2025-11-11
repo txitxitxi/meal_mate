@@ -28,7 +28,10 @@ class MealMateApp extends ConsumerWidget {
       title: 'Meal Mate',
       theme: ThemeData(
         useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.green),
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: Colors.orange,
+          brightness: Brightness.light,
+        ),
       ),
       routerConfig: router,
     );

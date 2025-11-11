@@ -2,8 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/recipe_providers.dart';
 import '../models/recipe.dart';
-import '../widgets/custom_header.dart';
-
 class RecipeSearchPage extends ConsumerStatefulWidget {
   const RecipeSearchPage({super.key});
 
@@ -110,6 +108,9 @@ class _RecipeSearchPageState extends ConsumerState<RecipeSearchPage> {
 
   Widget _buildSearchResults() {
     final recipesAsync = ref.watch(searchRecipesByIngredientProvider(_currentSearchTerm));
+    final scheme = Theme.of(context).colorScheme;
+    final zhContainer = scheme.primaryContainer;
+    final zhOnContainer = scheme.onPrimaryContainer;
 
     return Column(
       children: [
@@ -138,7 +139,7 @@ class _RecipeSearchPageState extends ConsumerState<RecipeSearchPage> {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                   decoration: BoxDecoration(
-                    color: Colors.blue.shade100,
+                    color: zhContainer.withValues(alpha: 0.8),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
@@ -146,7 +147,7 @@ class _RecipeSearchPageState extends ConsumerState<RecipeSearchPage> {
                     style: TextStyle(
                       fontSize: 10,
                       fontWeight: FontWeight.bold,
-                      color: Colors.blue.shade700,
+                      color: zhOnContainer,
                     ),
                   ),
                 ),

@@ -4,6 +4,7 @@ import '../models/recipe.dart';
 import '../services/supabase_service.dart';
 import '../services/translation_service.dart';
 import 'auth_providers.dart';
+import '../utils/logger.dart';
 
 // Helper function to categorize ingredients based on name
 String _categorizeIngredient(String name) {
@@ -99,7 +100,7 @@ final authorProfileProvider = FutureProvider.family<Map<String, String?>?, Strin
     
     return null;
   } catch (e) {
-    print('Failed to fetch author info for $authorId: $e');
+    logDebug('Failed to fetch author info for $authorId: $e');
     return null;
   }
 });
@@ -120,7 +121,7 @@ final isRecipeSavedProvider = FutureProvider.family<bool, String>((ref, recipeId
     
     return response != null;
   } catch (e) {
-    print('Failed to check if recipe is saved: $e');
+    logDebug('Failed to check if recipe is saved: $e');
     return false;
   }
 });
@@ -139,7 +140,7 @@ final saveRecipeProvider = FutureProvider.family<void, String>((ref, recipeId) a
       'recipe_id': recipeId,
     });
   } catch (e) {
-    print('Failed to save recipe: $e');
+    logDebug('Failed to save recipe: $e');
     rethrow;
   }
 });
@@ -159,7 +160,7 @@ final unsaveRecipeProvider = FutureProvider.family<void, String>((ref, recipeId)
         .eq('user_id', uid)
         .eq('recipe_id', recipeId);
   } catch (e) {
-    print('Failed to unsave recipe: $e');
+    logDebug('Failed to unsave recipe: $e');
     rethrow;
   }
 });
@@ -182,7 +183,7 @@ final updateRecipeVisibilityProvider = FutureProvider.family<void, ({
         .eq('id', args.recipeId)
         .eq('author_id', uid); // Ensure user can only update their own recipes
   } catch (e) {
-    print('Failed to update recipe visibility: $e');
+    logDebug('Failed to update recipe visibility: $e');
     rethrow;
   }
 });
@@ -245,7 +246,7 @@ final userSavedRecipesStreamProvider = StreamProvider<List<Recipe>>((ref) {
           recipes.map((r) => MapEntry(r['id'] as String, Recipe.fromMap(r)))
         );
         
-        return recipeIds.map((id) => recipeMap[id]!).where((recipe) => recipe != null).toList();
+        return recipeIds.map((id) => recipeMap[id]!).toList();
       });
 });
 
@@ -346,7 +347,7 @@ final addRecipeProvider = FutureProvider.family<void, ({
         .maybeSingle();
 
     if (found != null) {
-      ingredient = found as Map<String, dynamic>;
+      ingredient = found;
     } else {
       // Auto-categorize ingredient based on name
       final category = _categorizeIngredient(name);
@@ -486,7 +487,7 @@ final searchIngredientsProvider = FutureProvider.family<List<Map<String, dynamic
     
     return uniqueIngredients.values.toList();
   } catch (e) {
-    print('Error searching ingredients: $e');
+    logDebug('Error searching ingredients: $e');
     // Final fallback to simple ingredients search
     try {
       final fallbackResponse = await client
@@ -503,7 +504,7 @@ final searchIngredientsProvider = FutureProvider.family<List<Map<String, dynamic
         'is_primary': true,
       }).toList();
     } catch (fallbackError) {
-      print('Fallback search also failed: $fallbackError');
+      logDebug('Fallback search also failed: $fallbackError');
       return [];
     }
   }
@@ -534,7 +535,7 @@ final searchRecipesByIngredientProvider = FutureProvider.family<List<Recipe>, St
     
     return recipes.map((data) => Recipe.fromMap(data)).toList();
   } catch (e) {
-    print('Error searching recipes by ingredient: $e');
+    logDebug('Error searching recipes by ingredient: $e');
     return [];
   }
 });
@@ -575,7 +576,7 @@ final updateRecipeProvider = FutureProvider.family<void, ({
         .maybeSingle();
     
     if (found != null) {
-      ingredient = found as Map<String, dynamic>;
+      ingredient = found;
     } else {
       // Auto-categorize ingredient based on name
       final category = _categorizeIngredient(name);
@@ -633,7 +634,7 @@ final addIngredientWithTranslationProvider = FutureProvider.family<String, Map<S
     // The trigger will automatically add Chinese translation if available
     return response['name'];
   } catch (e) {
-    print('Error adding ingredient: $e');
+    logDebug('Error adding ingredient: $e');
     rethrow;
   }
 });

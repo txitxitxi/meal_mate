@@ -6,6 +6,7 @@ import '../../providers/home_inventory_providers.dart';
 import '../../models/moduels.dart';
 import '../../utils/text_formatter.dart';
 import '../../widgets/ingredient_autocomplete.dart';
+import '../utils/logger.dart';
 
 class StoresPage extends ConsumerStatefulWidget {
   const StoresPage({super.key});
@@ -20,7 +21,6 @@ class _StoresPageState extends ConsumerState<StoresPage> {
   bool _isSearching = false;
   String? _expandedStoreId;
   String? _highlightedIngredient;
-  bool _homeInventoryExpanded = false;
 
   @override
   void dispose() {
@@ -48,7 +48,6 @@ class _StoresPageState extends ConsumerState<StoresPage> {
   @override
   Widget build(BuildContext context) {
     final storesAsync = ref.watch(storesStreamProvider);
-    
     return Scaffold(
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => showDialog(context: context, builder: (_) => const _AddStoreDialog()),
@@ -118,6 +117,10 @@ class _StoresPageState extends ConsumerState<StoresPage> {
     }
 
     final searchAsync = ref.watch(searchStoresByIngredientProvider(searchQuery));
+    final scheme = Theme.of(context).colorScheme;
+    final primary = scheme.primary;
+    final primaryContainer = scheme.primaryContainer;
+    final onPrimaryContainer = scheme.onPrimaryContainer;
     
     return searchAsync.when(
       data: (stores) => stores.isEmpty 
@@ -163,17 +166,17 @@ class _StoresPageState extends ConsumerState<StoresPage> {
                         margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                         child: ListTile(
                           leading: CircleAvatar(
-                            backgroundColor: Colors.blue.shade100,
+                            backgroundColor: primaryContainer.withValues(alpha: 0.7),
                             child: Icon(
                               Icons.store,
-                              color: Colors.blue.shade800,
+                              color: onPrimaryContainer,
                               size: 20,
                             ),
                           ),
                           title: Text(store['store_name'] as String),
                           subtitle: Text('Priority ${store['priority']}'),
                           trailing: IconButton(
-                            icon: const Icon(Icons.visibility, color: Colors.blue),
+                            icon: Icon(Icons.visibility, color: primary),
                             onPressed: () => _navigateToStoreAndHighlight(
                               context, 
                               store['store_id'] as String,
@@ -212,13 +215,13 @@ class _StoresPageState extends ConsumerState<StoresPage> {
           // Update local stores list when data changes
           if (_stores.isEmpty || _stores.length != stores.length) {
             _stores = List.from(stores);
-            print('Initialized local stores list: ${_stores.map((s) => '${s.name} (${s.priority})').join(', ')}');
+            logDebug('Initialized local stores list: ${_stores.map((s) => '${s.name} (${s.priority})').join(', ')}');
           }
           
           return ReorderableListView.builder(
             itemCount: _stores.length,
-            onReorder: (oldIndex, newIndex) {
-              print('Reordering: moving from index $oldIndex to $newIndex');
+            onReorder: (oldIndex, newIndex) async {
+              logDebug('Reordering: moving from index $oldIndex to $newIndex');
               
               setState(() {
                 if (newIndex > oldIndex) {
@@ -229,23 +232,25 @@ class _StoresPageState extends ConsumerState<StoresPage> {
               });
               
               // Log the new order
-              print('New store order:');
+              logDebug('New store order:');
               for (int i = 0; i < _stores.length; i++) {
-                print('  ${i + 1}. ${_stores[i].name} (ID: ${_stores[i].id})');
+                logDebug('  ${i + 1}. ${_stores[i].name} (ID: ${_stores[i].id})');
               }
               
               // Update priorities in database based on new order
               final storeIds = _stores.map((store) => store.id).toList();
-              ref.read(reorderStoresProvider(storeIds).future).then((_) {
-                ScaffoldMessenger.of(context).showSnackBar(
+              final messenger = ScaffoldMessenger.of(context);
+              try {
+                await ref.read(reorderStoresProvider(storeIds).future);
+                messenger.showSnackBar(
                   const SnackBar(
                     content: Text('Store order updated!'),
                     duration: Duration(seconds: 2),
                   ),
                 );
-              }).catchError((error) {
-                print('Error updating store order: $error');
-                ScaffoldMessenger.of(context).showSnackBar(
+              } catch (error) {
+                logDebug('Error updating store order: $error');
+                messenger.showSnackBar(
                   SnackBar(
                     content: Text('Failed to update store order: $error'),
                     backgroundColor: Colors.red,
@@ -255,7 +260,7 @@ class _StoresPageState extends ConsumerState<StoresPage> {
                 setState(() {
                   _stores = List.from(stores);
                 });
-              });
+              }
             },
             itemBuilder: (context, i) {
               final s = _stores[i];
@@ -286,11 +291,13 @@ class _StoresPageState extends ConsumerState<StoresPage> {
 
   Widget _buildHomeInventorySection() {
     final homeInventoryAsync = ref.watch(homeInventoryStreamProvider);
+    final scheme = Theme.of(context).colorScheme;
+    final homeColor = scheme.secondary;
     
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       child: ExpansionTile(
-        leading: Icon(Icons.home, color: Colors.green.shade600, size: 20),
+        leading: Icon(Icons.home, color: homeColor, size: 20),
         title: const Text('Home Inventory', style: TextStyle(fontSize: 16)),
         subtitle: homeInventoryAsync.when(
           data: (items) => Text('${items.length} items', style: const TextStyle(fontSize: 12)),
@@ -298,9 +305,6 @@ class _StoresPageState extends ConsumerState<StoresPage> {
           error: (_, __) => const Text('Error', style: TextStyle(fontSize: 12)),
         ),
         initiallyExpanded: false,
-        onExpansionChanged: (expanded) {
-          setState(() => _homeInventoryExpanded = expanded);
-        },
         children: [
           _HomeInventoryContent(),
         ],
@@ -327,6 +331,9 @@ class _DraggableStoreTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final highlightContainer = scheme.primaryContainer;
+    final highlightText = scheme.onPrimaryContainer;
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       child: ExpansionTile(
@@ -360,14 +367,14 @@ class _DraggableStoreTile extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  color: Colors.blue.shade100,
+                  color: highlightContainer.withValues(alpha: 0.7),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Text(
                   'Search: $highlightedIngredient',
                   style: TextStyle(
                     fontSize: 12,
-                    color: Colors.blue.shade800,
+                    color: highlightText,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
@@ -415,7 +422,7 @@ class _StoreItemsState extends ConsumerState<_StoreItems> {
 
   @override
   Widget build(BuildContext context) {
-    print('_StoreItems build method called for store: ${widget.storeId}');
+    logDebug('_StoreItems build method called for store: ${widget.storeId}');
     final itemsAsync = ref.watch(storeItemsProvider(widget.storeId));
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -477,31 +484,32 @@ class _AddItemButtonState extends ConsumerState<_AddItemButton> {
   bool _saving = false;
   @override
   Widget build(BuildContext context) {
-    print('_AddItemButton build method called for store: ${widget.storeId}');
+    logDebug('_AddItemButton build method called for store: ${widget.storeId}');
     return FilledButton(
       onPressed: _saving
           ? null
           : () async {
               final rawName = widget.ctrl.text.trim();
               final name = TextFormatter.toTitleCase(rawName);
-              print('Add button pressed for ingredient: "$rawName" -> "$name"');
+              logDebug('Add button pressed for ingredient: "$rawName" -> "$name"');
               if (name.isEmpty) {
-                print('Ingredient name is empty, returning');
+                logDebug('Ingredient name is empty, returning');
                 return;
               }
               setState(() => _saving = true);
-              print('Calling addStoreItemProvider...');
+              final messenger = ScaffoldMessenger.of(context);
+              logDebug('Calling addStoreItemProvider...');
               try {
                 await ref.read(addStoreItemProvider((storeId: widget.storeId, ingredientName: name)).future);
-                print('Successfully called addStoreItemProvider');
+                logDebug('Successfully called addStoreItemProvider');
                 // Invalidate the store items provider to refresh the list
                 ref.invalidate(storeItemsProvider(widget.storeId));
                 widget.ctrl.clear();
-                print('Cleared text field');
+                logDebug('Cleared text field');
               } catch (e) {
-                print('Error adding ingredient: $e');
+                logDebug('Error adding ingredient: $e');
                 if (!mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(
+                messenger.showSnackBar(
                   SnackBar(content: Text('Failed to add item: $e')),
                 );
               } finally {
@@ -528,6 +536,7 @@ class _AddStoreDialogState extends ConsumerState<_AddStoreDialog> {
   @override
   Widget build(BuildContext context) {
     final storesAsync = ref.watch(storesStreamProvider);
+    final scheme = Theme.of(context).colorScheme;
     
     return AlertDialog(
       title: const Text('Add Store'),
@@ -545,7 +554,7 @@ class _AddStoreDialogState extends ConsumerState<_AddStoreDialog> {
               ),
               const SizedBox(height: 16),
               Card(
-                color: Colors.blue.shade50,
+                color: scheme.primaryContainer.withValues(alpha: 0.25),
                 child: Padding(
                   padding: const EdgeInsets.all(12),
                   child: Column(
@@ -553,13 +562,13 @@ class _AddStoreDialogState extends ConsumerState<_AddStoreDialog> {
                     children: [
                       Row(
                         children: [
-                          Icon(Icons.info_outline, color: Colors.blue.shade700, size: 16),
+                          Icon(Icons.info_outline, color: scheme.primary, size: 16),
                           const SizedBox(width: 8),
                           Text(
                             'Priority Assignment',
                             style: TextStyle(
                               fontWeight: FontWeight.bold,
-                              color: Colors.blue.shade700,
+                              color: scheme.onPrimaryContainer,
                             ),
                           ),
                         ],
@@ -568,7 +577,7 @@ class _AddStoreDialogState extends ConsumerState<_AddStoreDialog> {
                       storesAsync.when(
                         data: (stores) => Text(
                           'This store will be added at position ${stores.length + 1} (Priority ${stores.length + 1}).\n\nYou can reorder stores by dragging them up or down in the list.',
-                          style: TextStyle(fontSize: 12, color: Colors.blue.shade600),
+                          style: TextStyle(fontSize: 12, color: scheme.onPrimaryContainer.withValues(alpha: 0.8)),
                         ),
                         loading: () => const Text('Calculating position...'),
                         error: (_, __) => const Text('Unable to calculate position'),
@@ -589,6 +598,8 @@ class _AddStoreDialogState extends ConsumerState<_AddStoreDialog> {
               : () async {
                   if (!_formKey.currentState!.validate()) return;
                   setState(() => _saving = true);
+                  final navigator = Navigator.of(context);
+                  final messenger = ScaffoldMessenger.of(context);
                   
                   // Get the current store count for auto-assigned priority
                   final stores = await ref.read(storesStreamProvider.future);
@@ -601,10 +612,10 @@ class _AddStoreDialogState extends ConsumerState<_AddStoreDialog> {
                     )).future);
                     // Invalidate the stores provider to refresh the list
                     ref.invalidate(storesStreamProvider);
-                    if (mounted) Navigator.pop(context);
+                    if (mounted) navigator.pop();
                   } catch (e) {
                     if (!mounted) return;
-                    ScaffoldMessenger.of(context).showSnackBar(
+                    messenger.showSnackBar(
                       SnackBar(content: Text('Failed to save store: $e')),
                     );
                   } finally {
@@ -642,13 +653,14 @@ class _DeletableStoreItemChipState extends ConsumerState<_DeletableStoreItemChip
     if (_isDeleting) return;
 
     setState(() => _isDeleting = true);
+    final messenger = ScaffoldMessenger.of(context);
 
     try {
       await ref.read(deleteStoreItemProvider(widget.storeItem.id).future);
       widget.onDeleted();
       
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        messenger.showSnackBar(
           SnackBar(
             content: Text('Removed "${widget.storeItem.ingredientName}" from store'),
             duration: const Duration(seconds: 2),
@@ -657,7 +669,7 @@ class _DeletableStoreItemChipState extends ConsumerState<_DeletableStoreItemChip
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        messenger.showSnackBar(
           SnackBar(
             content: Text('Failed to remove ingredient: $e'),
             backgroundColor: Colors.red,
@@ -973,6 +985,7 @@ class _AddHomeInventoryButtonState extends ConsumerState<_AddHomeInventoryButton
     if (ingredientName.isEmpty) return;
 
     setState(() => _saving = true);
+    final messenger = ScaffoldMessenger.of(context);
 
     try {
       final quantity = double.tryParse(widget.quantityCtrl.text.trim());
@@ -988,7 +1001,7 @@ class _AddHomeInventoryButtonState extends ConsumerState<_AddHomeInventoryButton
       widget.onAdded();
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        messenger.showSnackBar(
           SnackBar(
             content: Text('Added "$ingredientName" to home inventory'),
             duration: const Duration(seconds: 2),
@@ -997,7 +1010,7 @@ class _AddHomeInventoryButtonState extends ConsumerState<_AddHomeInventoryButton
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        messenger.showSnackBar(
           SnackBar(
             content: Text('Failed to add item: $e'),
             backgroundColor: Colors.red,
@@ -1030,13 +1043,14 @@ class _DeletableHomeInventoryChipState extends ConsumerState<_DeletableHomeInven
     if (_isDeleting) return;
 
     setState(() => _isDeleting = true);
+    final messenger = ScaffoldMessenger.of(context);
 
     try {
       await ref.read(deleteHomeInventoryItemProvider(widget.item.id).future);
       widget.onDeleted();
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        messenger.showSnackBar(
           SnackBar(
             content: Text('Removed "${widget.item.ingredientName}" from home inventory'),
             duration: const Duration(seconds: 2),
@@ -1045,7 +1059,7 @@ class _DeletableHomeInventoryChipState extends ConsumerState<_DeletableHomeInven
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        messenger.showSnackBar(
           SnackBar(
             content: Text('Failed to remove item: $e'),
             backgroundColor: Colors.red,
@@ -1064,12 +1078,15 @@ class _DeletableHomeInventoryChipState extends ConsumerState<_DeletableHomeInven
     final displayText = quantityText.isNotEmpty 
         ? '${widget.item.ingredientName} ($quantityText$unitText)'
         : widget.item.ingredientName;
+    final scheme = Theme.of(context).colorScheme;
+    final homeColor = scheme.secondary;
+    final homeContainer = scheme.secondaryContainer;
 
     return Chip(
       label: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.home, size: 16, color: Colors.green.shade600),
+          Icon(Icons.home, size: 16, color: homeColor),
           const SizedBox(width: 4),
           Text(displayText),
           const SizedBox(width: 4),
@@ -1096,8 +1113,8 @@ class _DeletableHomeInventoryChipState extends ConsumerState<_DeletableHomeInven
             ),
         ],
       ),
-      backgroundColor: Colors.green.shade50,
-      side: BorderSide(color: Colors.green.shade200),
+      backgroundColor: homeContainer.withValues(alpha: 0.7),
+      side: BorderSide(color: homeColor.withValues(alpha: 0.4)),
     );
   }
 }

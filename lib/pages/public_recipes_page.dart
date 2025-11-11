@@ -30,6 +30,11 @@ class _PublicRecipesPageState extends ConsumerState<PublicRecipesPage> {
     final recipesAsync = _searchQuery.isNotEmpty 
         ? ref.watch(searchRecipesByIngredientProvider(_searchQuery))
         : ref.watch(publicRecipesStreamProvider);
+    final scheme = Theme.of(context).colorScheme;
+    final zhContainer = scheme.primaryContainer;
+    final zhOnContainer = scheme.onPrimaryContainer;
+    final proteinContainer = scheme.secondaryContainer;
+    final proteinOnContainer = scheme.onSecondaryContainer;
     
     return Scaffold(
       body: Column(
@@ -95,7 +100,7 @@ class _PublicRecipesPageState extends ConsumerState<PublicRecipesPage> {
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                 decoration: BoxDecoration(
-                                  color: Colors.blue.shade100,
+                                  color: zhContainer.withValues(alpha: 0.8),
                                   borderRadius: BorderRadius.circular(8),
                                 ),
                                 child: Text(
@@ -103,7 +108,7 @@ class _PublicRecipesPageState extends ConsumerState<PublicRecipesPage> {
                                   style: TextStyle(
                                     fontSize: 10,
                                     fontWeight: FontWeight.bold,
-                                    color: Colors.blue.shade700,
+                                    color: zhOnContainer,
                                   ),
                                 ),
                               ),
@@ -166,13 +171,13 @@ class _PublicRecipesPageState extends ConsumerState<PublicRecipesPage> {
                                   return Text('By Community', style: TextStyle(color: Colors.grey[600], fontSize: 11));
                                 },
                               ),
-                              if (r.protein != null && r.protein!.name.toLowerCase() != 'none')
+                              if (r.protein != ProteinPreference.none)
                                 Padding(
                                   padding: const EdgeInsets.only(top: 2),
                                   child: Chip(
-                                    label: Text(r.protein!.name.toUpperCase()),
-                                    backgroundColor: Colors.green.shade100,
-                                    labelStyle: TextStyle(color: Colors.green.shade700, fontSize: 9),
+                                    label: Text(r.protein.name.toUpperCase()),
+                                    backgroundColor: proteinContainer.withValues(alpha: 0.7),
+                                    labelStyle: TextStyle(color: proteinOnContainer, fontSize: 9),
                                     materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                                     padding: const EdgeInsets.symmetric(horizontal: 4),
                                   ),
@@ -268,25 +273,26 @@ class _PublicRecipesPageState extends ConsumerState<PublicRecipesPage> {
                                   Consumer(
                                     builder: (context, ref, child) {
                                       final isSavedAsync = ref.watch(isRecipeSavedProvider(r.id));
+                                      final messenger = ScaffoldMessenger.of(context);
                                       return isSavedAsync.when(
                                         data: (isSaved) => FilledButton.icon(
                                           onPressed: () async {
                                             try {
                                               if (isSaved) {
                                                 await ref.read(unsaveRecipeProvider(r.id).future);
-                                                ScaffoldMessenger.of(context).showSnackBar(
+                                                messenger.showSnackBar(
                                                   const SnackBar(content: Text('Recipe unsaved')),
                                                 );
                                               } else {
                                                 await ref.read(saveRecipeProvider(r.id).future);
-                                                ScaffoldMessenger.of(context).showSnackBar(
+                                                messenger.showSnackBar(
                                                   const SnackBar(content: Text('Recipe saved to your collection!')),
                                                 );
                                               }
                                               // Refresh the saved status
                                               ref.invalidate(isRecipeSavedProvider(r.id));
                                             } catch (e) {
-                                              ScaffoldMessenger.of(context).showSnackBar(
+                                              messenger.showSnackBar(
                                                 SnackBar(content: Text('Failed to ${isSaved ? 'unsave' : 'save'} recipe: $e')),
                                               );
                                             }
@@ -307,12 +313,12 @@ class _PublicRecipesPageState extends ConsumerState<PublicRecipesPage> {
                                           onPressed: () async {
                                             try {
                                               await ref.read(saveRecipeProvider(r.id).future);
-                                              ScaffoldMessenger.of(context).showSnackBar(
+                                              messenger.showSnackBar(
                                                 const SnackBar(content: Text('Recipe saved to your collection!')),
                                               );
                                               ref.invalidate(isRecipeSavedProvider(r.id));
                                             } catch (e) {
-                                              ScaffoldMessenger.of(context).showSnackBar(
+                                              messenger.showSnackBar(
                                                 SnackBar(content: Text('Failed to save recipe: $e')),
                                               );
                                             }

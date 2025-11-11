@@ -1,4 +1,5 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../utils/logger.dart';
 
 class TranslationService {
   static final SupabaseClient _client = Supabase.instance.client;
@@ -24,7 +25,7 @@ class TranslationService {
       }
       return null;
     } catch (e) {
-      print('Error translating ingredient: $e');
+      logDebug('Error translating ingredient: $e');
       return null;
     }
   }
@@ -42,7 +43,7 @@ class TranslationService {
         'chinese_translation_param': chineseName,
       });
     } catch (e) {
-      print('Error caching ingredient translation: $e');
+      logDebug('Error caching ingredient translation: $e');
       rethrow;
     }
   }
@@ -57,7 +58,7 @@ class TranslationService {
       
       return List<Map<String, dynamic>>.from(response);
     } catch (e) {
-      print('Error fetching translations: $e');
+      logDebug('Error fetching translations: $e');
       return [];
     }
   }
@@ -73,7 +74,7 @@ class TranslationService {
       
       return List<Map<String, dynamic>>.from(response);
     } catch (e) {
-      print('Error searching translations: $e');
+      logDebug('Error searching translations: $e');
       return [];
     }
   }
@@ -89,7 +90,7 @@ class TranslationService {
       
       return response;
     } catch (e) {
-      print('Error getting translation: $e');
+      logDebug('Error getting translation: $e');
       return null;
     }
   }
@@ -113,7 +114,7 @@ class TranslationService {
       final response = await _client.rpc('apply_retroactive_translations');
       return response as int;
     } catch (e) {
-      print('Error applying retroactive translations: $e');
+      logDebug('Error applying retroactive translations: $e');
       return 0;
     }
   }
@@ -149,7 +150,7 @@ class TranslationService {
         'missing_translations': ingredientCount - chineseCount,
       };
     } catch (e) {
-      print('Error getting translation stats: $e');
+      logDebug('Error getting translation stats: $e');
       return {};
     }
   }
