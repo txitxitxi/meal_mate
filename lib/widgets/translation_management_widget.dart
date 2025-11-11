@@ -103,6 +103,7 @@ class _TranslationManagementWidgetState extends State<TranslationManagementWidge
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(
         title: const Text('Translation Management'),
@@ -133,17 +134,17 @@ class _TranslationManagementWidgetState extends State<TranslationManagementWidge
                               _buildStatCard(
                                 'Total Translations',
                                 _stats['total_translations']?.toString() ?? '0',
-                                Colors.blue,
+                                scheme.primary,
                               ),
                               _buildStatCard(
                                 'With Chinese',
                                 _stats['ingredients_with_chinese']?.toString() ?? '0',
-                                Colors.green,
+                                scheme.secondary,
                               ),
                               _buildStatCard(
                                 'Missing',
                                 _stats['missing_translations']?.toString() ?? '0',
-                                Colors.orange,
+                                scheme.tertiary,
                               ),
                             ],
                           ),
@@ -200,8 +201,8 @@ class _TranslationManagementWidgetState extends State<TranslationManagementWidge
                               ElevatedButton(
                                 onPressed: _applyRetroactiveTranslations,
                                 style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.orange,
-                                  foregroundColor: Colors.white,
+                                  backgroundColor: scheme.primary,
+                                  foregroundColor: scheme.onPrimary,
                                 ),
                                 child: const Text('Apply Retroactive Translations'),
                               ),

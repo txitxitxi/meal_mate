@@ -4,8 +4,7 @@ import '../models/moduels.dart';
 import '../services/supabase_service.dart';
 import '../utils/protein_preferences.dart';
 import 'auth_providers.dart';
-import 'home_inventory_providers.dart';
-
+import '../utils/logger.dart';
 // Add a refresh trigger for meal plans
 final mealPlanRefreshProvider = StateProvider<int>((ref) => 0);
 
@@ -15,16 +14,16 @@ final shoppingListRefreshProvider = StateProvider<int>((ref) => 0);
 final mealPlanProvider = StreamProvider<List<MealPlanSummary>>((ref) async* {
   // Watch the refresh trigger to force refresh when needed
   final refreshTrigger = ref.watch(mealPlanRefreshProvider);
-  print('Meal plan provider triggered with refresh: $refreshTrigger');
+  logDebug('Meal plan provider triggered with refresh: $refreshTrigger');
   
   final user = ref.watch(currentUserProvider);
   if (user == null) {
-    print('No user found, returning empty meal plan');
+    logDebug('No user found, returning empty meal plan');
     yield <MealPlanSummary>[];
     return;
   }
 
-  print('Loading meal plan for user: ${user.id}');
+  logDebug('Loading meal plan for user: ${user.id}');
   
   // Force a fresh query every time by adding the refresh trigger to the query
   final rows = await SupabaseService.client
@@ -34,13 +33,13 @@ final mealPlanProvider = StreamProvider<List<MealPlanSummary>>((ref) async* {
       .order('created_at', ascending: false)
       .limit(1);
   
-  print('Found ${rows.length} weekly plans');
+  logDebug('Found ${rows.length} weekly plans');
   if (rows.isNotEmpty) {
     final plan = rows.first;
-    print('Latest plan ID: ${plan['id']}');
-    print('Latest plan created_at: ${plan['created_at']}');
-    print('Latest plan week_start_date: ${plan['week_start_date']}');
-    print('LOADING PLAN WITH ID: ${plan['id']}');
+    logDebug('Latest plan ID: ${plan['id']}');
+    logDebug('Latest plan created_at: ${plan['created_at']}');
+    logDebug('Latest plan week_start_date: ${plan['week_start_date']}');
+    logDebug('LOADING PLAN WITH ID: ${plan['id']}');
   }
   
   final entries = <MealPlanSummary>[];
@@ -50,11 +49,11 @@ final mealPlanProvider = StreamProvider<List<MealPlanSummary>>((ref) async* {
     final planData = plan['plan'] as Map<String, dynamic>?;
     
     if (planData != null) {
-      print('Processing plan data: $planData');
+      logDebug('Processing plan data: $planData');
       
       // Get all unique recipe IDs from the plan
       final recipeIds = planData.values.whereType<String>().toList();
-      print('Recipe IDs from plan: $recipeIds');
+      logDebug('Recipe IDs from plan: $recipeIds');
       
       // Fetch all recipes in one query
       final recipes = <String, Map<String, dynamic>>{};
@@ -67,7 +66,7 @@ final mealPlanProvider = StreamProvider<List<MealPlanSummary>>((ref) async* {
         for (final recipe in recipeResponse) {
           recipes[recipe['id'] as String] = recipe;
         }
-        print('Fetched ${recipes.length} recipes');
+        logDebug('Fetched ${recipes.length} recipes');
       }
       
       // Count occurrences of each recipe
@@ -75,7 +74,7 @@ final mealPlanProvider = StreamProvider<List<MealPlanSummary>>((ref) async* {
       for (final recipeId in recipeIds) {
         recipeCounts[recipeId] = (recipeCounts[recipeId] ?? 0) + 1;
       }
-      print('Recipe counts: $recipeCounts');
+      logDebug('Recipe counts: $recipeCounts');
       
       // Create entries for unique recipes with their counts
       for (final entry in recipeCounts.entries) {
@@ -95,8 +94,8 @@ final mealPlanProvider = StreamProvider<List<MealPlanSummary>>((ref) async* {
     }
   }
   
-  print('Meal plan entries created: ${entries.length}');
-  print('Entries: ${entries.map((e) => '${e.recipe.title}').toList()}');
+  logDebug('Meal plan entries created: ${entries.length}');
+  logDebug('Entries: ${entries.map((e) => e.recipe.title).toList()}');
   
   yield entries;
 });
@@ -148,10 +147,10 @@ final generatePlanProvider = FutureProvider.family<String, Map<String, dynamic>>
     throw Exception('No recipes found. Please add some recipes first.');
   }
   
-  print('User own recipes: ${userOwnRecipes.length}');
-  print('Saved recipes: ${savedRecipes.length}');
-  print('Total unique recipes for meal planning: ${allRecipes.length}');
-  print('Recipe titles: ${allRecipes.map((r) => r['title']).toList()}');
+  logDebug('User own recipes: ${userOwnRecipes.length}');
+  logDebug('Saved recipes: ${savedRecipes.length}');
+  logDebug('Total unique recipes for meal planning: ${allRecipes.length}');
+  logDebug('Recipe titles: ${allRecipes.map((r) => r['title']).toList()}');
 
   // Get all recipe ingredients with their names
   final recipeIngredients = await client
@@ -187,9 +186,9 @@ final generatePlanProvider = FutureProvider.family<String, Map<String, dynamic>>
     // Score recipes by protein preferences but don't exclude any
     final recipeScores = <Map<String, dynamic>, double>{};
     
-    print('🔍 Processing ${allRecipes.length} recipes for protein scoring...');
+    logDebug('🔍 Processing ${allRecipes.length} recipes for protein scoring...');
     for (final recipe in allRecipes) {
-      print('  - ${recipe['title']}');
+      logDebug('  - ${recipe['title']}');
     }
     
     for (final recipe in allRecipes) {
@@ -226,11 +225,11 @@ final generatePlanProvider = FutureProvider.family<String, Map<String, dynamic>>
       // Debug logging for Tomato Eggs and 牛肉炒饭 specifically
       if (recipe['title']?.toString().toLowerCase().contains('tomato eggs') == true || 
           recipe['title']?.toString().contains('牛肉炒饭') == true) {
-        print('🔍 DEBUG ${recipe['title']}:');
-        print('  - Ingredients: $ingredientNames');
-        print('  - Selected preferences: $proteinPreferences');
-        print('  - Matching proteins: $matchingProteins out of ${proteinPreferences.length}');
-        print('  - Protein score: $proteinScore');
+        logDebug('🔍 DEBUG ${recipe['title']}:');
+        logDebug('  - Ingredients: $ingredientNames');
+        logDebug('  - Selected preferences: $proteinPreferences');
+        logDebug('  - Matching proteins: $matchingProteins out of ${proteinPreferences.length}');
+        logDebug('  - Protein score: $proteinScore');
         
         // Debug each ingredient
         for (final ingredient in ingredientNames) {
@@ -240,13 +239,13 @@ final generatePlanProvider = FutureProvider.family<String, Map<String, dynamic>>
             final matches = patterns.any((pattern) => 
               ingredient.toLowerCase().contains(pattern.toLowerCase()));
             if (matches) {
-              print('    ✅ "$ingredient" matches "$preference" pattern');
+              logDebug('    ✅ "$ingredient" matches "$preference" pattern');
             }
           }
         }
       }
       
-      print('Recipe: ${recipe['title']} - Protein score: $proteinScore');
+      logDebug('Recipe: ${recipe['title']} - Protein score: $proteinScore');
     }
 
     // Sort recipes by protein score (highest first) but keep all recipes available
@@ -255,8 +254,8 @@ final generatePlanProvider = FutureProvider.family<String, Map<String, dynamic>>
     
     final recipesToUse = sortedByProtein.map((entry) => entry.key).toList();
     
-    print('Total recipes available: ${allRecipes.length}');
-    print('Recipes sorted by protein preference: ${recipesToUse.map((r) => r['title']).toList()}');
+    logDebug('Total recipes available: ${allRecipes.length}');
+    logDebug('Recipes sorted by protein preference: ${recipesToUse.map((r) => r['title']).toList()}');
 
     // Get the start of this week (Monday)
     final today = DateTime.now();
@@ -267,8 +266,8 @@ final generatePlanProvider = FutureProvider.family<String, Map<String, dynamic>>
     final selectedRecipes = await _selectOptimalRecipes(client, recipesToUse, uniqueRecipeTypes, recipeScores, user.id);
     final totalMeals = totalDays * mealsPerDay;
     
-    print('Configuration: $uniqueRecipeTypes unique types, $totalDays days, $mealsPerDay meals/day = $totalMeals total meals');
-    print('Selected recipes: ${selectedRecipes.map((r) => r['title']).toList()}');
+    logDebug('Configuration: $uniqueRecipeTypes unique types, $totalDays days, $mealsPerDay meals/day = $totalMeals total meals');
+    logDebug('Selected recipes: ${selectedRecipes.map((r) => r['title']).toList()}');
     
     // Create plan data with configuration-aware selection
     final planData = <String, String>{};
@@ -287,19 +286,19 @@ final generatePlanProvider = FutureProvider.family<String, Map<String, dynamic>>
       }
     }
     
-    print('Generated plan with ${planData.length} meal slots using ${selectedRecipes.length} unique recipes');
-    print('Plan data being saved: $planData');
+    logDebug('Generated plan with ${planData.length} meal slots using ${selectedRecipes.length} unique recipes');
+    logDebug('Plan data being saved: $planData');
 
     // Insert new weekly plan (always create new entry)
-    print('INSERTING NEW PLAN TO DATABASE...');
+    logDebug('INSERTING NEW PLAN TO DATABASE...');
     
     // Filter out invalid enum values for protein_priority
     final validProteinPreferences = proteinPreferences.where((pref) => 
       ['chicken', 'beef', 'pork', 'fish', 'seafood', 'vegetarian', 'vegan'].contains(pref)
     ).toList();
     
-    print('Original protein preferences: $proteinPreferences');
-    print('Valid protein preferences: $validProteinPreferences');
+    logDebug('Original protein preferences: $proteinPreferences');
+    logDebug('Valid protein preferences: $validProteinPreferences');
     
     // Use upsert to update existing plan or create new one
     try {
@@ -308,25 +307,25 @@ final generatePlanProvider = FutureProvider.family<String, Map<String, dynamic>>
         'week_start_date': weekStart.toIso8601String().split('T')[0],
         'plan': planData,
       }, onConflict: 'user_id,week_start_date').select('id').single();
-      print('DATABASE INSERT RESPONSE: $weeklyPlanResponse');
+      logDebug('DATABASE INSERT RESPONSE: $weeklyPlanResponse');
       
       final weeklyPlanId = weeklyPlanResponse['id'] as String;
-      print('Weekly plan created successfully with ID: $weeklyPlanId');
-      print('Plan saved with ${planData.length} meal slots');
-      print('RETURNING PLAN ID: $weeklyPlanId');
+      logDebug('Weekly plan created successfully with ID: $weeklyPlanId');
+      logDebug('Plan saved with ${planData.length} meal slots');
+      logDebug('RETURNING PLAN ID: $weeklyPlanId');
       
       // Auto-generate shopping list after creating weekly plan
-      print('🛒 Starting shopping list generation for plan: $weeklyPlanId');
+      logDebug('🛒 Starting shopping list generation for plan: $weeklyPlanId');
       try {
         await _generateShoppingListFromPlan(client, user.id, weeklyPlanId, planData);
-        print('✅ Shopping list auto-generated successfully!');
+        logDebug('✅ Shopping list auto-generated successfully!');
         
         // Trigger shopping list refresh after generation
         ref.read(shoppingListRefreshProvider.notifier).state++;
-        print('🔄 Shopping list refresh triggered');
+        logDebug('🔄 Shopping list refresh triggered');
       } catch (e) {
-        print('❌ Failed to auto-generate shopping list: $e');
-        print('❌ Stack trace: ${StackTrace.current}');
+        logDebug('❌ Failed to auto-generate shopping list: $e');
+        logDebug('❌ Stack trace: ${StackTrace.current}');
         // Don't throw here - weekly plan was created successfully
       }
       
@@ -334,7 +333,7 @@ final generatePlanProvider = FutureProvider.family<String, Map<String, dynamic>>
       return weeklyPlanId;
       
     } catch (e) {
-      print('DATABASE INSERT FAILED: $e');
+      logDebug('DATABASE INSERT FAILED: $e');
       rethrow;
     }
 });
@@ -342,27 +341,27 @@ final generatePlanProvider = FutureProvider.family<String, Map<String, dynamic>>
 final shoppingListProvider = StreamProvider<List<ShoppingListItem>>((ref) async* {
   // Watch the refresh trigger to force refresh when needed
   final refreshTrigger = ref.watch(shoppingListRefreshProvider);
-  print('Shopping list provider triggered with refresh: $refreshTrigger');
+  logDebug('Shopping list provider triggered with refresh: $refreshTrigger');
   
   final user = ref.watch(currentUserProvider);
   if (user == null) {
-    print('No user found for shopping list');
+    logDebug('No user found for shopping list');
     yield <ShoppingListItem>[];
     return;
   }
 
-  print('Setting up shopping list provider for user: ${user.id}');
+  logDebug('Setting up shopping list provider for user: ${user.id}');
   
   // Load shopping list items
   final items = await _loadShoppingListForUser(user.id);
-  print('Shopping list provider yielding ${items.length} items');
+  logDebug('Shopping list provider yielding ${items.length} items');
   yield items;
 });
 
 // Helper function to load shopping list for a user
 Future<List<ShoppingListItem>> _loadShoppingListForUser(String userId) async {
   try {
-    print('Loading shopping list for user: $userId');
+    logDebug('Loading shopping list for user: $userId');
     
     // Get user's most recent weekly plan only
     final userWeeklyPlans = await SupabaseService.client
@@ -372,33 +371,33 @@ Future<List<ShoppingListItem>> _loadShoppingListForUser(String userId) async {
         .order('created_at', ascending: false)
         .limit(1);
     
-    print('Found ${userWeeklyPlans.length} weekly plans for user');
+    logDebug('Found ${userWeeklyPlans.length} weekly plans for user');
     
     if (userWeeklyPlans.isEmpty) {
-      print('No weekly plans found - returning empty shopping list');
+      logDebug('No weekly plans found - returning empty shopping list');
       return <ShoppingListItem>[];
     }
     
     // Only use the most recent weekly plan
     final latestPlan = userWeeklyPlans.first;
     final latestPlanId = latestPlan['id'] as String;
-    print('Using latest weekly plan ID: $latestPlanId');
+    logDebug('Using latest weekly plan ID: $latestPlanId');
     
     // Get shopping list items for the latest weekly plan only
-    print('🔍 Querying shopping_list_items for latest weekly plan ID: $latestPlanId');
+    logDebug('🔍 Querying shopping_list_items for latest weekly plan ID: $latestPlanId');
     final shoppingItems = await SupabaseService.client
         .from('shopping_list_items')
         .select('*')
         .eq('meal_plan_id', latestPlanId)
         .order('id');
     
-    print('🔍 Found ${shoppingItems.length} shopping list items');
+    logDebug('🔍 Found ${shoppingItems.length} shopping list items');
     if (shoppingItems.isNotEmpty) {
-      print('🔍 Shopping list items: ${shoppingItems.map((item) => '${item['ingredient_id']} (plan: ${item['meal_plan_id']})').toList()}');
+      logDebug('🔍 Shopping list items: ${shoppingItems.map((item) => '${item['ingredient_id']} (plan: ${item['meal_plan_id']})').toList()}');
     }
     
     if (shoppingItems.isEmpty) {
-      print('No shopping list items found - returning empty list');
+      logDebug('No shopping list items found - returning empty list');
       return <ShoppingListItem>[];
     }
     
@@ -445,11 +444,11 @@ Future<List<ShoppingListItem>> _loadShoppingListForUser(String userId) async {
       ));
     }
     
-    print('Processed ${items.length} shopping list items');
+    logDebug('Processed ${items.length} shopping list items');
     return items;
     
   } catch (e) {
-    print('Error loading shopping list for user $userId: $e');
+    logDebug('Error loading shopping list for user $userId: $e');
     return <ShoppingListItem>[];
   }
 }
@@ -477,8 +476,8 @@ final generateShoppingListProvider = FutureProvider<void>((ref) async {
       .order('week_start_date', ascending: false)
       .limit(1);
   
-  print('Weekly plans found: ${weeklyPlans.length}');
-  print('Weekly plans data: $weeklyPlans');
+  logDebug('Weekly plans found: ${weeklyPlans.length}');
+  logDebug('Weekly plans data: $weeklyPlans');
   
   if (weeklyPlans.isEmpty) {
     throw Exception('No weekly plan found. Please generate a weekly plan first.');
@@ -506,9 +505,9 @@ final generateShoppingListProvider = FutureProvider<void>((ref) async {
     throw Exception('No recipes found in weekly plan.');
   }
   
-  print('Plan data: $planData');
-  print('Recipe counts: $recipeCounts');
-  print('Recipe IDs: $recipeIds');
+  logDebug('Plan data: $planData');
+  logDebug('Recipe counts: $recipeCounts');
+  logDebug('Recipe IDs: $recipeIds');
   
   // Get all ingredients for these recipes
   final recipeIngredients = await client
@@ -516,8 +515,8 @@ final generateShoppingListProvider = FutureProvider<void>((ref) async {
       .select('recipe_id, ingredient_id, quantity, unit, ingredients!inner(name)')
       .inFilter('recipe_id', recipeIds);
   
-  print('Recipe IDs: $recipeIds');
-  print('Recipe ingredients count: ${recipeIngredients.length}');
+  logDebug('Recipe IDs: $recipeIds');
+  logDebug('Recipe ingredients count: ${recipeIngredients.length}');
   
   // Group ingredients by name and sum quantities (multiplied by meal count)
   final ingredientMap = <String, Map<String, dynamic>>{};
@@ -525,7 +524,7 @@ final generateShoppingListProvider = FutureProvider<void>((ref) async {
     try {
       final recipeId = ri['recipe_id'] as String?;
       if (recipeId == null) {
-        print('Warning: recipe_id is null for ingredient: $ri');
+        logDebug('Warning: recipe_id is null for ingredient: $ri');
         continue;
       }
       
@@ -534,7 +533,7 @@ final generateShoppingListProvider = FutureProvider<void>((ref) async {
       final quantity = (ri['quantity'] as num? ?? 0) * mealCount; // Multiply by meal count
       final unit = ri['unit'] as String? ?? 'unit';
       
-      print('Processing ingredient: $ingredientName, qty: $quantity, unit: $unit (x$mealCount meals)');
+      logDebug('Processing ingredient: $ingredientName, qty: $quantity, unit: $unit (x$mealCount meals)');
       
       if (ingredientMap.containsKey(ingredientName)) {
         // Sum quantities for the same ingredient
@@ -553,8 +552,8 @@ final generateShoppingListProvider = FutureProvider<void>((ref) async {
         };
       }
     } catch (e) {
-      print('Error processing ingredient: $e');
-      print('Raw ingredient data: $ri');
+      logDebug('Error processing ingredient: $e');
+      logDebug('Raw ingredient data: $ri');
     }
   }
   
@@ -572,13 +571,13 @@ final generateShoppingListProvider = FutureProvider<void>((ref) async {
       .from('store_items')
       .select('store_id, ingredient_id, ingredients!inner(name)');
   
-  print('Store items found: ${storeItems.length}');
-  print('Store items data: $storeItems');
+  logDebug('Store items found: ${storeItems.length}');
+  logDebug('Store items data: $storeItems');
   
   // Debug: Check which stores have beef
   final beefStores = storeItems.where((item) => 
     (item['ingredients']?['name'] as String?)?.toLowerCase() == 'beef').toList();
-  print('Beef availability: ${beefStores.map((item) => {
+  logDebug('Beef availability: ${beefStores.map((item) => {
     'store_id': item['store_id'],
     'store_name': stores.firstWhere((s) => s['id'] == item['store_id'], orElse: () => {'name': 'Unknown'})['name']
   }).toList()}');
@@ -590,12 +589,12 @@ final generateShoppingListProvider = FutureProvider<void>((ref) async {
     final storeId = storeItem['store_id'] as String;
     if (ingredientName != null) {
       ingredientToStore[ingredientName] = storeId;
-      print('Mapped ingredient: $ingredientName -> store: $storeId');
+      logDebug('Mapped ingredient: $ingredientName -> store: $storeId');
     }
   }
   
-  print('Total ingredient mappings: ${ingredientToStore.length}');
-  print('Ingredient mappings: $ingredientToStore');
+  logDebug('Total ingredient mappings: ${ingredientToStore.length}');
+  logDebug('Ingredient mappings: $ingredientToStore');
   
   // Group ingredients by store
   final storeIngredientMap = <String, List<Map<String, dynamic>>>{};
@@ -603,7 +602,7 @@ final generateShoppingListProvider = FutureProvider<void>((ref) async {
     final ingredientName = ingredient['name'] as String;
     final storeId = ingredientToStore[ingredientName];
     
-    print('Ingredient: $ingredientName -> Store ID: $storeId');
+    logDebug('Ingredient: $ingredientName -> Store ID: $storeId');
     
     if (storeId != null) {
       storeIngredientMap.putIfAbsent(storeId, () => []).add(ingredient);
@@ -613,8 +612,8 @@ final generateShoppingListProvider = FutureProvider<void>((ref) async {
     }
   }
   
-  print('Store ingredient mapping: ${storeIngredientMap.keys.toList()}');
-  print('Total ingredients to process: ${ingredientMap.length}');
+  logDebug('Store ingredient mapping: ${storeIngredientMap.keys.toList()}');
+  logDebug('Total ingredients to process: ${ingredientMap.length}');
   
   // Create store ID to name mapping
   final storeIdToName = <String, String>{};
@@ -628,7 +627,7 @@ final generateShoppingListProvider = FutureProvider<void>((ref) async {
     final ingredients = storeEntry.value;
     final storeName = storeId != null ? storeIdToName[storeId] : 'No Store';
     
-    print('Processing store: ${storeEntry.key} -> $storeName (${ingredients.length} ingredients)');
+    logDebug('Processing store: ${storeEntry.key} -> $storeName (${ingredients.length} ingredients)');
     
     for (final ingredient in ingredients) {
       // Find or create ingredient
@@ -652,7 +651,7 @@ final generateShoppingListProvider = FutureProvider<void>((ref) async {
       }
       
       // Insert shopping list item
-      print('💾 Inserting shopping list item: ingredient=$ingredientId, store=$storeId, plan=$weeklyPlanId');
+      logDebug('💾 Inserting shopping list item: ingredient=$ingredientId, store=$storeId, plan=$weeklyPlanId');
       await client.from('shopping_list_items').insert({
         'meal_plan_id': weeklyPlanId,
         'ingredient_id': ingredientId,
@@ -664,8 +663,8 @@ final generateShoppingListProvider = FutureProvider<void>((ref) async {
     }
   }
   
-  print('Shopping list generation completed successfully!');
-  print('Total ingredients processed: ${ingredientMap.length}');
+  logDebug('Shopping list generation completed successfully!');
+  logDebug('Total ingredients processed: ${ingredientMap.length}');
 });
 
 // Helper function to generate shopping list from plan data
@@ -686,8 +685,8 @@ Future<void> _generateShoppingListFromPlan(
     throw Exception('No recipes found in weekly plan.');
   }
   
-  print('🛒 Auto-generating shopping list for ${recipeIds.length} recipes');
-  print('🛒 Recipe IDs: $recipeIds');
+  logDebug('🛒 Auto-generating shopping list for ${recipeIds.length} recipes');
+  logDebug('🛒 Recipe IDs: $recipeIds');
   
   // Get all ingredients for these recipes
   final recipeIngredients = await client
@@ -701,7 +700,7 @@ Future<void> _generateShoppingListFromPlan(
     try {
       final recipeId = ri['recipe_id'] as String?;
       if (recipeId == null) {
-        print('Warning: recipe_id is null for ingredient: $ri');
+        logDebug('Warning: recipe_id is null for ingredient: $ri');
         continue;
       }
       
@@ -726,7 +725,7 @@ Future<void> _generateShoppingListFromPlan(
         };
       }
     } catch (e) {
-      print('Error processing ingredient: $e');
+      logDebug('Error processing ingredient: $e');
     }
   }
   
@@ -740,7 +739,7 @@ Future<void> _generateShoppingListFromPlan(
       .map((item) => (item['ingredient_name'] as String).toLowerCase())
       .toSet();
   
-  print('🏠 Found ${homeIngredientNames.length} home inventory items: $homeIngredientNames');
+  logDebug('🏠 Found ${homeIngredientNames.length} home inventory items: $homeIngredientNames');
   
   // Filter out ingredients that are at home
   final shoppingIngredients = <String, Map<String, dynamic>>{};
@@ -751,11 +750,11 @@ Future<void> _generateShoppingListFromPlan(
     if (!homeIngredientNames.contains(ingredientName.toLowerCase())) {
       shoppingIngredients[ingredientName] = ingredientData;
     } else {
-      print('🏠 Excluding "$ingredientName" from shopping list (available at home)');
+      logDebug('🏠 Excluding "$ingredientName" from shopping list (available at home)');
     }
   }
   
-  print('🛒 After filtering home inventory: ${shoppingIngredients.length} ingredients need shopping');
+  logDebug('🛒 After filtering home inventory: ${shoppingIngredients.length} ingredients need shopping');
   
   // Clear existing shopping list items
   await client.from('shopping_list_items').delete().eq('meal_plan_id', weeklyPlanId);
@@ -777,7 +776,7 @@ Future<void> _generateShoppingListFromPlan(
     final priority = store['priority'] as int? ?? 10;
     final name = store['name'] as String;
     storePriorities[storeId] = priority;
-    print('🏪 Store: $name (ID: $storeId, Priority: $priority)');
+    logDebug('🏪 Store: $name (ID: $storeId, Priority: $priority)');
   }
   
   // Create ingredient to store mapping with priority-based selection
@@ -800,7 +799,7 @@ Future<void> _generateShoppingListFromPlan(
     
     // Skip if no stores are available for this ingredient
     if (availableStores.isEmpty) {
-      print('⚠️ No stores available for ingredient: $ingredientName - assigning to no_store');
+      logDebug('⚠️ No stores available for ingredient: $ingredientName - assigning to no_store');
       ingredientToStore[ingredientName] = 'no_store';
       continue;
     }
@@ -821,20 +820,20 @@ Future<void> _generateShoppingListFromPlan(
     if (ingredientName.toLowerCase() == 'beef') {
       final selectedStoreName = stores.firstWhere((s) => s['id'] == selectedStoreId, orElse: () => {'name': 'Unknown'})['name'];
       final selectedStorePriority = storePriorities[selectedStoreId] ?? 10;
-      print('🐄 Beef assigned to: $selectedStoreName (Priority: $selectedStorePriority)');
-      print('🐄 Available stores for beef: ${availableStores.map((id) => {
+      logDebug('🐄 Beef assigned to: $selectedStoreName (Priority: $selectedStorePriority)');
+      logDebug('🐄 Available stores for beef: ${availableStores.map((id) => {
         'name': stores.firstWhere((s) => s['id'] == id, orElse: () => {'name': 'Unknown'})['name'],
         'priority': storePriorities[id] ?? 10,
       }).toList()}');
-      print('🐄 Ingredient name: "$ingredientName" (exact match: ${ingredientName.toLowerCase() == 'beef'})');
+      logDebug('🐄 Ingredient name: "$ingredientName" (exact match: ${ingredientName.toLowerCase() == 'beef'})');
     }
   }
   
-  print('Ingredient-to-store assignment (priority-based):');
+  logDebug('Ingredient-to-store assignment (priority-based):');
   for (final entry in ingredientToStore.entries) {
     final storeName = stores.firstWhere((s) => s['id'] == entry.value, orElse: () => {'name': 'Unknown'})['name'];
     final priority = storePriorities[entry.value] ?? 10;
-    print('  ${entry.key} → $storeName (Priority: $priority)');
+    logDebug('  ${entry.key} → $storeName (Priority: $priority)');
   }
   
   // Optimize store visits by consolidating ingredients
@@ -848,18 +847,18 @@ Future<void> _generateShoppingListFromPlan(
     
     if (storeId != null) {
       storeIngredientMap.putIfAbsent(storeId, () => []).add(ingredient);
-      print('Initial assignment: $ingredientName → ${stores.firstWhere((s) => s['id'] == storeId, orElse: () => {'name': 'Unknown'})['name']}');
+      logDebug('Initial assignment: $ingredientName → ${stores.firstWhere((s) => s['id'] == storeId, orElse: () => {'name': 'Unknown'})['name']}');
     } else {
       unassignedIngredients.add(ingredient);
     }
   }
   
-  print('Before optimization: ${storeIngredientMap.map((k, v) => MapEntry(stores.firstWhere((s) => s['id'] == k, orElse: () => {'name': 'Unknown'})['name'], v.length))}');
+  logDebug('Before optimization: ${storeIngredientMap.map((k, v) => MapEntry(stores.firstWhere((s) => s['id'] == k, orElse: () => {'name': 'Unknown'})['name'], v.length))}');
   
   // Second pass: optimize by consolidating ingredients to minimize store visits
   await _optimizeStoreVisits(client, storeIngredientMap, unassignedIngredients);
   
-  print('After optimization: ${storeIngredientMap.map((k, v) => MapEntry(stores.firstWhere((s) => s['id'] == k, orElse: () => {'name': 'Unknown'})['name'], v.length))}');
+  logDebug('After optimization: ${storeIngredientMap.map((k, v) => MapEntry(stores.firstWhere((s) => s['id'] == k, orElse: () => {'name': 'Unknown'})['name'], v.length))}');
   
   // Insert shopping list items grouped by store
   for (final storeEntry in storeIngredientMap.entries) {
@@ -887,7 +886,7 @@ Future<void> _generateShoppingListFromPlan(
       }
       
       // Insert shopping list item
-      print('💾 Inserting shopping list item: ingredient=$ingredientId, store=$storeId, plan=$weeklyPlanId');
+      logDebug('💾 Inserting shopping list item: ingredient=$ingredientId, store=$storeId, plan=$weeklyPlanId');
       await client.from('shopping_list_items').insert({
         'meal_plan_id': weeklyPlanId,
         'ingredient_id': ingredientId,
@@ -899,7 +898,7 @@ Future<void> _generateShoppingListFromPlan(
     }
   }
   
-  print('Auto-generated shopping list with ${shoppingIngredients.length} ingredients');
+  logDebug('Auto-generated shopping list with ${shoppingIngredients.length} ingredients');
 }
 
 // Helper function to select optimal recipes that minimize store visits
@@ -912,7 +911,7 @@ Future<List<Map<String, dynamic>>> _selectOptimalRecipes(
 ) async {
   if (availableRecipes.isEmpty) return [];
   
-  print('Selecting optimal recipes to minimize store visits while considering protein preferences and home inventory...');
+  logDebug('Selecting optimal recipes to minimize store visits while considering protein preferences and home inventory...');
   
   // Get home inventory to prioritize recipes with home ingredients
   final homeInventory = await client
@@ -924,7 +923,7 @@ Future<List<Map<String, dynamic>>> _selectOptimalRecipes(
       .map((item) => (item['ingredient_name'] as String).toLowerCase())
       .toSet();
   
-  print('🏠 Home inventory ingredients: $homeIngredientNames');
+  logDebug('🏠 Home inventory ingredients: $homeIngredientNames');
   
   // Get store priorities
   final stores = await client
@@ -937,7 +936,7 @@ Future<List<Map<String, dynamic>>> _selectOptimalRecipes(
     storePriorities[store['id'] as String] = store['priority'] as int? ?? 10;
   }
   
-  print('🏪 Store priorities: $storePriorities');
+  logDebug('🏪 Store priorities: $storePriorities');
   
   // Get all store items to understand ingredient availability
   final storeItems = await client
@@ -980,7 +979,7 @@ Future<List<Map<String, dynamic>>> _selectOptimalRecipes(
         // Check if ingredient is available at home first
         if (homeIngredientNames.contains(ingredientName.toLowerCase())) {
           homeIngredients++;
-          print('🏠 Recipe ${recipe['name']} uses home ingredient: $ingredientName');
+          logDebug('🏠 Recipe ${recipe['name']} uses home ingredient: $ingredientName');
         } else {
           // Check if this ingredient is available in stores
           final availableStores = ingredientToStores[ingredientName] ?? [];
@@ -1003,7 +1002,7 @@ Future<List<Map<String, dynamic>>> _selectOptimalRecipes(
             
             // Debug logging for store scoring
             if (recipe['title']?.toString().toLowerCase().contains('tomato eggs') == true) {
-              print('    🛒 Ingredient "$ingredientName" -> Store priority $priority -> Score +$ingredientScore');
+              logDebug('    🛒 Ingredient "$ingredientName" -> Store priority $priority -> Score +$ingredientScore');
             }
           } else {
             // Track ingredients not available at any store
@@ -1037,18 +1036,19 @@ Future<List<Map<String, dynamic>>> _selectOptimalRecipes(
     
     // Debug logging for Tomato Eggs specifically
     if (recipe['title']?.toString().toLowerCase().contains('tomato eggs') == true) {
-      print('🍅 FINAL DEBUG Tomato Eggs:');
-      print('  - Protein score: ${proteinScore.toStringAsFixed(1)}');
-      print('  - Store score: ${storeScore.toStringAsFixed(1)}');
-      print('  - Combined score: ${combinedScore.toStringAsFixed(1)}');
-      print('  - Actual stores needed: $actualStores (${storeUsage.keys.length} real stores + ${noStoreIngredients > 0 ? 1 : 0} no-store)');
-      print('  - Total ingredients: $totalIngredients');
-      print('  - Home ingredients: $homeIngredients/$totalIngredients');
-      print('  - No-store ingredients: $noStoreIngredients');
-      print('  - Store usage: $storeUsage');
+      logDebug('🍅 FINAL DEBUG Tomato Eggs:');
+      logDebug('  - Protein score: ${proteinScore.toStringAsFixed(1)}');
+      logDebug('  - Store score: ${storeScore.toStringAsFixed(1)}');
+      logDebug('  - Combined score: ${combinedScore.toStringAsFixed(1)}');
+      logDebug('  - Actual stores needed: $actualStores (${storeUsage.keys.length} real stores + ${noStoreIngredients > 0 ? 1 : 0} no-store)');
+      logDebug('  - Total ingredients: $totalIngredients');
+      logDebug('  - Home ingredients: $homeIngredients/$totalIngredients');
+      logDebug('  - No-store ingredients: $noStoreIngredients');
+      logDebug('  - Store usage: $storeUsage');
     }
     
-    print('Recipe "${recipe['title']}": protein=${proteinScore.toStringAsFixed(1)}, store=${storeScore.toStringAsFixed(1)}, combined=${combinedScore.toStringAsFixed(1)}, stores=$actualStores, ingredients=$totalIngredients, home=${homeIngredients}/$totalIngredients, no-store=$noStoreIngredients');
+    final recipeTitle = recipe['title'];
+    logDebug('Recipe "$recipeTitle": protein=${proteinScore.toStringAsFixed(1)}, store=${storeScore.toStringAsFixed(1)}, combined=${combinedScore.toStringAsFixed(1)}, stores=$actualStores, ingredients=$totalIngredients, home=$homeIngredients/$totalIngredients, no-store=$noStoreIngredients');
   }
   
   // Sort recipes by combined score (highest first) and take the top ones
@@ -1063,12 +1063,19 @@ Future<List<Map<String, dynamic>>> _selectOptimalRecipes(
     selectedRecipes.add(sortedRecipes[i].key);
   }
   
-  print('Requested $uniqueRecipeTypes unique recipes');
-  print('Available recipes: ${sortedRecipes.length}');
-  print('Selected ${selectedRecipes.length} recipes: ${selectedRecipes.map((r) => '${r['title']} (score: ${combinedScores[r]?.toStringAsFixed(1)})').join(', ')}');
+  logDebug('Requested $uniqueRecipeTypes unique recipes');
+  logDebug('Available recipes: ${sortedRecipes.length}');
+  final formattedSelectedRecipes = selectedRecipes
+      .map((recipe) {
+        final title = recipe['title'];
+        final score = combinedScores[recipe]?.toStringAsFixed(1);
+        return '$title (score: $score)';
+      })
+      .join(', ');
+  logDebug('Selected ${selectedRecipes.length} recipes: $formattedSelectedRecipes');
   
   if (selectedRecipes.length < uniqueRecipeTypes) {
-    print('WARNING: Only found ${selectedRecipes.length} recipes, requested $uniqueRecipeTypes');
+    logDebug('WARNING: Only found ${selectedRecipes.length} recipes, requested $uniqueRecipeTypes');
   }
   
   return selectedRecipes;
@@ -1080,7 +1087,7 @@ Future<void> _optimizeStoreVisits(
   Map<String, List<Map<String, dynamic>>> storeIngredientMap,
   List<Map<String, dynamic>> unassignedIngredients,
 ) async {
-  print('Optimizing store visits...');
+  logDebug('Optimizing store visits...');
   
   // Get all stores with their priority
   final stores = await client
@@ -1120,7 +1127,7 @@ Future<void> _optimizeStoreVisits(
       return sizeB.compareTo(sizeA);
     });
   
-  print('Store optimization order (by priority): ${sortedStores.map((id) => '${stores.firstWhere((s) => s['id'] == id, orElse: () => {'name': 'Unknown'})['name']} (Priority: ${storePriorities[id]}, ${storeSizes[id]} items)').join(', ')}');
+  logDebug('Store optimization order (by priority): ${sortedStores.map((id) => '${stores.firstWhere((s) => s['id'] == id, orElse: () => {'name': 'Unknown'})['name']} (Priority: ${storePriorities[id]}, ${storeSizes[id]} items)').join(', ')}');
   
   // Strategy 2: For ingredients available in multiple stores, choose the store with most other ingredients
   final ingredientAvailability = <String, List<String>>{};
@@ -1144,7 +1151,7 @@ Future<void> _optimizeStoreVisits(
   final primaryStore = sortedStores.isNotEmpty ? sortedStores.first : null;
   
   if (primaryStore != null) {
-    print('Primary consolidation target: ${stores.firstWhere((s) => s['id'] == primaryStore, orElse: () => {'name': 'Unknown'})['name']} (Priority: ${storePriorities[primaryStore]})');
+    logDebug('Primary consolidation target: ${stores.firstWhere((s) => s['id'] == primaryStore, orElse: () => {'name': 'Unknown'})['name']} (Priority: ${storePriorities[primaryStore]})');
     
     // First pass: Try to consolidate everything into the primary store
     optimizedStoreMap[primaryStore] = List.from(storeIngredientMap[primaryStore] ?? []);
@@ -1160,20 +1167,20 @@ Future<void> _optimizeStoreVisits(
         if (processedIngredients.contains(ingredientName)) continue;
         
         final availableStores = ingredientAvailability[ingredientName] ?? [];
-        print('🔍 Checking ingredient $ingredientName: available at stores $availableStores, primary store $primaryStore');
+        logDebug('🔍 Checking ingredient $ingredientName: available at stores $availableStores, primary store $primaryStore');
         if (availableStores.contains(primaryStore)) {
           // This ingredient is available at the primary store, move it
-          print('✅ Moving $ingredientName to primary store $primaryStore');
+          logDebug('✅ Moving $ingredientName to primary store $primaryStore');
           ingredientsToMove.add(ingredient);
           processedIngredients.add(ingredientName);
         } else {
-          print('❌ $ingredientName NOT available at primary store $primaryStore, keeping at source store');
+          logDebug('❌ $ingredientName NOT available at primary store $primaryStore, keeping at source store');
           remainingIngredients.add(ingredient);
         }
       }
       
       if (ingredientsToMove.isNotEmpty) {
-        print('Moving ${ingredientsToMove.length} ingredients from ${stores.firstWhere((s) => s['id'] == sourceStoreId, orElse: () => {'name': 'Unknown'})['name']} to ${stores.firstWhere((s) => s['id'] == primaryStore, orElse: () => {'name': 'Unknown'})['name']}');
+        logDebug('Moving ${ingredientsToMove.length} ingredients from ${stores.firstWhere((s) => s['id'] == sourceStoreId, orElse: () => {'name': 'Unknown'})['name']} to ${stores.firstWhere((s) => s['id'] == primaryStore, orElse: () => {'name': 'Unknown'})['name']}');
         optimizedStoreMap[primaryStore]!.addAll(ingredientsToMove);
       }
       
@@ -1215,7 +1222,7 @@ Future<void> _optimizeStoreVisits(
       }
       
       if (ingredientsToMove.isNotEmpty) {
-        print('Moving ${ingredientsToMove.length} ingredients from ${stores.firstWhere((s) => s['id'] == sourceStoreId, orElse: () => {'name': 'Unknown'})['name']} to ${stores.firstWhere((s) => s['id'] == targetStoreId, orElse: () => {'name': 'Unknown'})['name']}');
+        logDebug('Moving ${ingredientsToMove.length} ingredients from ${stores.firstWhere((s) => s['id'] == sourceStoreId, orElse: () => {'name': 'Unknown'})['name']} to ${stores.firstWhere((s) => s['id'] == targetStoreId, orElse: () => {'name': 'Unknown'})['name']}');
         optimizedStoreMap[targetStoreId]!.addAll(ingredientsToMove);
         
         if (remainingIngredients.isEmpty) {
@@ -1237,24 +1244,24 @@ Future<void> _optimizeStoreVisits(
   // Assign unassigned ingredients to "no_store" (don't assume any store carries them)
   if (unassignedIngredients.isNotEmpty) {
     optimizedStoreMap.putIfAbsent('no_store', () => []).addAll(unassignedIngredients);
-    print('Assigned ${unassignedIngredients.length} unassigned ingredients to no specific store (no_store)');
+    logDebug('Assigned ${unassignedIngredients.length} unassigned ingredients to no specific store (no_store)');
   }
   
   // Update the store ingredient map
   storeIngredientMap.clear();
   storeIngredientMap.addAll(optimizedStoreMap);
   
-  print('Final store consolidation:');
+  logDebug('Final store consolidation:');
   for (final entry in storeIngredientMap.entries) {
     final storeName = entry.key == 'no_store' ? 'No specific store' : 
         stores.firstWhere((s) => s['id'] == entry.key, orElse: () => {'name': 'Unknown'})['name'];
-    print('  $storeName: ${entry.value.map((i) => i['name']).join(', ')}');
+    logDebug('  $storeName: ${entry.value.map((i) => i['name']).join(', ')}');
   }
   
   // Print optimization results
   final totalStores = storeIngredientMap.keys.where((id) => id != 'no_store').length;
-  print('Store optimization complete!');
-  print('Total stores to visit: $totalStores');
+  logDebug('Store optimization complete!');
+  logDebug('Total stores to visit: $totalStores');
   
   // Sort final results by priority for display
   final sortedFinalStores = storeIngredientMap.entries.toList()
@@ -1268,6 +1275,6 @@ Future<void> _optimizeStoreVisits(
     final storeName = entry.key == 'no_store' ? 'No specific store' : 
         stores.firstWhere((s) => s['id'] == entry.key, orElse: () => {'name': 'Unknown'})['name'];
     final priority = storePriorities[entry.key] ?? 10;
-    print('  - $storeName (Priority: $priority): ${entry.value.length} items');
+    logDebug('  - $storeName (Priority: $priority): ${entry.value.length} items');
   }
 }

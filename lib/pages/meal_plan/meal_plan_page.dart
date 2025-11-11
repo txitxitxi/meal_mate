@@ -5,6 +5,7 @@ import '../../providers/meal_plan_providers.dart';
 import '../../providers/home_inventory_providers.dart';
 import '../../models/moduels.dart';
 import '../../utils/protein_preferences.dart';
+import '../../utils/logger.dart';
 
 class MealPlanPage extends ConsumerStatefulWidget {
   const MealPlanPage({super.key});
@@ -24,6 +25,8 @@ class _MealPlanPageState extends ConsumerState<MealPlanPage> with TickerProvider
   bool _isProteinPrefsExpanded = false;
   
   late TabController _tabController;
+  
+  ColorScheme get _colorScheme => Theme.of(context).colorScheme;
   
   @override
   void initState() {
@@ -47,15 +50,17 @@ class _MealPlanPageState extends ConsumerState<MealPlanPage> with TickerProvider
   }
   
   Widget _buildSummaryRow(IconData icon, String text) {
+    final accentColor = _colorScheme.primary;
+    final accentTextColor = _colorScheme.onPrimaryContainer;
     return Row(
       children: [
-        Icon(icon, size: 16, color: Colors.blue.shade600),
+        Icon(icon, size: 16, color: accentColor),
         const SizedBox(width: 8),
         Expanded(
           child: Text(
             text,
             style: TextStyle(
-              color: Colors.blue.shade800,
+              color: accentTextColor,
               fontWeight: FontWeight.w500,
             ),
           ),
@@ -76,6 +81,7 @@ class _MealPlanPageState extends ConsumerState<MealPlanPage> with TickerProvider
   @override
   Widget build(BuildContext context) {
     final mealPlanAsync = ref.watch(mealPlanProvider);
+    final scheme = _colorScheme;
 
     return Scaffold(
       floatingActionButton: FloatingActionButton.extended(
@@ -121,7 +127,7 @@ class _MealPlanPageState extends ConsumerState<MealPlanPage> with TickerProvider
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                             decoration: BoxDecoration(
-                              color: Colors.green.shade100,
+                              color: scheme.secondaryContainer.withValues(alpha: 0.6),
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: Text(
@@ -130,7 +136,7 @@ class _MealPlanPageState extends ConsumerState<MealPlanPage> with TickerProvider
                                   : '${_selectedProteins.length} selected',
                               style: TextStyle(
                                 fontSize: 11,
-                                color: Colors.green.shade700,
+                                color: scheme.onSecondaryContainer,
                                 fontWeight: FontWeight.w500,
                               ),
                             ),
@@ -140,7 +146,7 @@ class _MealPlanPageState extends ConsumerState<MealPlanPage> with TickerProvider
                           padding: const EdgeInsets.all(4),
                           constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
                           onPressed: () {
-                            print('Manual refresh triggered');
+                            logDebug('Manual refresh triggered');
                             ref.read(mealPlanRefreshProvider.notifier).state++;
                             ref.invalidate(mealPlanProvider);
                             ScaffoldMessenger.of(context).showSnackBar(
@@ -198,8 +204,8 @@ class _MealPlanPageState extends ConsumerState<MealPlanPage> with TickerProvider
                                     }
                                   });
                                 },
-                                selectedColor: Colors.green.withOpacity(0.3),
-                                checkmarkColor: Colors.green,
+                                selectedColor: scheme.primaryContainer.withValues(alpha: 0.7),
+                                checkmarkColor: scheme.onPrimaryContainer,
                                 materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                               );
@@ -262,8 +268,8 @@ class _MealPlanPageState extends ConsumerState<MealPlanPage> with TickerProvider
                                   subtitle: Text('$count meal${count > 1 ? 's' : ''} planned'),
                                   trailing: Chip(
                                     label: Text('$count'),
-                                    backgroundColor: Colors.blue.shade100,
-                                    labelStyle: TextStyle(color: Colors.blue.shade700),
+                                    backgroundColor: scheme.primaryContainer.withValues(alpha: 0.7),
+                                    labelStyle: TextStyle(color: scheme.onPrimaryContainer),
                                   ),
                                   onTap: () {
                                     // Auto-collapse protein preferences when tapping meal plan items
@@ -286,22 +292,22 @@ class _MealPlanPageState extends ConsumerState<MealPlanPage> with TickerProvider
                           margin: const EdgeInsets.all(12),
                           padding: const EdgeInsets.all(16),
                           decoration: BoxDecoration(
-                            color: Colors.blue.shade50,
+                            color: scheme.primaryContainer.withValues(alpha: 0.25),
                             borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: Colors.blue.shade200),
+                            border: Border.all(color: scheme.primary.withValues(alpha: 0.4)),
                           ),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Row(
                                 children: [
-                                  Icon(Icons.info_outline, color: Colors.blue.shade700, size: 20),
+                                  Icon(Icons.info_outline, color: scheme.primary, size: 20),
                                   const SizedBox(width: 8),
                                   Text(
                                     'Plan Summary',
                                     style: TextStyle(
                                       fontWeight: FontWeight.bold,
-                                      color: Colors.blue.shade700,
+                                      color: scheme.onPrimaryContainer,
                                       fontSize: 16,
                                     ),
                                   ),
@@ -345,7 +351,9 @@ class _MealPlanPageState extends ConsumerState<MealPlanPage> with TickerProvider
     showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
+        builder: (context, setDialogState) {
+          final dialogScheme = Theme.of(context).colorScheme;
+          return AlertDialog(
           title: const Text('Plan Configuration'),
           content: SingleChildScrollView(
             child: Column(
@@ -366,9 +374,9 @@ class _MealPlanPageState extends ConsumerState<MealPlanPage> with TickerProvider
                     const SizedBox(width: 12),
                     Text(
                       '$_mealsPerDay',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontWeight: FontWeight.bold,
-                        color: Colors.green,
+                        color: dialogScheme.primary,
                         fontSize: 18,
                       ),
                     ),
@@ -390,9 +398,9 @@ class _MealPlanPageState extends ConsumerState<MealPlanPage> with TickerProvider
                     const SizedBox(width: 12),
                     Text(
                       '$_totalDays',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontWeight: FontWeight.bold,
-                        color: Colors.green,
+                        color: dialogScheme.primary,
                         fontSize: 18,
                       ),
                     ),
@@ -414,9 +422,9 @@ class _MealPlanPageState extends ConsumerState<MealPlanPage> with TickerProvider
                     const SizedBox(width: 12),
                     Text(
                       '$_uniqueRecipeTypes',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontWeight: FontWeight.bold,
-                        color: Colors.green,
+                        color: dialogScheme.primary,
                         fontSize: 18,
                       ),
                     ),
@@ -426,12 +434,18 @@ class _MealPlanPageState extends ConsumerState<MealPlanPage> with TickerProvider
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: Colors.blue.shade50,
+                    color: dialogScheme.primaryContainer.withValues(alpha: 0.25),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Column(
                     children: [
-                      Text('Plan Summary:', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue.shade700)),
+                      Text(
+                        'Plan Summary:',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: dialogScheme.onPrimaryContainer,
+                        ),
+                      ),
                       const SizedBox(height: 4),
                       Text('$_uniqueRecipeTypes unique recipe types'),
                       Text('${_mealsPerDay * _totalDays} total meals'),
@@ -463,30 +477,30 @@ class _MealPlanPageState extends ConsumerState<MealPlanPage> with TickerProvider
                     final newPlanId = await ref.refresh(generatePlanProvider(config).future);
                     
                     // Use the returned plan ID to confirm the plan was created
-                    print('New meal plan created with ID: $newPlanId');
+                    logDebug('New meal plan created with ID: $newPlanId');
                   } catch (e) {
-                    print('Error during meal plan generation: $e');
-                    throw e; // Re-throw to show error to user
+                    logDebug('Error during meal plan generation: $e');
+                    rethrow;
                   }
                   
                   // Ensure the database operation is fully complete before refreshing
-                  print('Waiting for database commit...');
+                  logDebug('Waiting for database commit...');
                   
-                  print('Triggering meal plan refresh...');
+                  logDebug('Triggering meal plan refresh...');
                   ref.read(mealPlanRefreshProvider.notifier).state++;
                   
       // Also refresh shopping list since it's auto-generated
       ref.invalidate(shoppingListProvider);
       ref.read(shoppingListRefreshProvider.notifier).state++;
                   
-                  print('Refresh trigger value: ${ref.read(mealPlanRefreshProvider)}');
+                  logDebug('Refresh trigger value: ${ref.read(mealPlanRefreshProvider)}');
                   
                   // Show success message
                   if (context.mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Weekly plan and shopping list generated successfully!'),
-                        backgroundColor: Colors.green,
+                      SnackBar(
+                        content: const Text('Weekly plan and shopping list generated successfully!'),
+                        backgroundColor: dialogScheme.primary,
                       ),
                     );
                   }
@@ -495,7 +509,7 @@ class _MealPlanPageState extends ConsumerState<MealPlanPage> with TickerProvider
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
                         content: Text('Failed to generate plan: $e'),
-                        backgroundColor: Colors.red,
+                        backgroundColor: dialogScheme.error,
                       ),
                     );
                   }
@@ -514,7 +528,8 @@ class _MealPlanPageState extends ConsumerState<MealPlanPage> with TickerProvider
                 : const Text('Generate'),
             ),
           ],
-        ),
+        );
+        },
       ),
     );
   }
@@ -529,6 +544,16 @@ class _ShoppingListTab extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final itemsAsync = ref.watch(shoppingListProvider);
     final homeInventoryAsync = ref.watch(homeInventoryStreamProvider);
+    final scheme = Theme.of(context).colorScheme;
+    final storeColor = scheme.primary;
+    final storeContainer = scheme.primaryContainer;
+    final onStoreContainer = scheme.onPrimaryContainer;
+    final homeColor = scheme.secondary;
+    final homeContainer = scheme.secondaryContainer;
+    final onHomeContainer = scheme.onSecondaryContainer;
+    final noStoreColor = scheme.tertiary;
+    final noStoreContainer = scheme.tertiaryContainer;
+    final onNoStoreContainer = scheme.onTertiaryContainer;
     
     return Column(
       children: [
@@ -587,15 +612,26 @@ class _ShoppingListTab extends ConsumerWidget {
                   final isNoStore = storeName == 'No Store';
                   final isHome = storeName == '🏠 Home';
                   
+                  final cardColor = isNoStore
+                      ? noStoreContainer.withValues(alpha: 0.3)
+                      : (isHome ? homeContainer.withValues(alpha: 0.3) : null);
+                  final iconColor = isHome ? homeColor : (isNoStore ? noStoreColor : storeColor);
+                  final chipBackground = isHome
+                      ? homeContainer.withValues(alpha: 0.7)
+                      : (isNoStore ? noStoreContainer.withValues(alpha: 0.7) : storeContainer.withValues(alpha: 0.7));
+                  final chipTextColor = isHome
+                      ? onHomeContainer
+                      : (isNoStore ? onNoStoreContainer : onStoreContainer);
+
                   return Card(
                     elevation: isNoStore ? 2 : 1,
-                    color: isNoStore ? Colors.orange.shade50 : (isHome ? Colors.green.shade50 : null),
+                    color: cardColor,
                     child: ExpansionTile(
                       title: Row(
                         children: [
                           Icon(
                             isHome ? Icons.home : (isNoStore ? Icons.warning_amber : Icons.store),
-                            color: isHome ? Colors.green : (isNoStore ? Colors.orange : Colors.blue),
+                            color: iconColor,
                             size: 20,
                           ),
                           const SizedBox(width: 8),
@@ -603,15 +639,15 @@ class _ShoppingListTab extends ConsumerWidget {
                             storeName,
                             style: TextStyle(
                               fontWeight: FontWeight.bold,
-                              color: isNoStore ? Colors.orange.shade700 : null,
+                              color: isNoStore ? noStoreColor : null,
                             ),
                           ),
                           const SizedBox(width: 8),
                           Chip(
                             label: Text('${list.length} items'),
-                            backgroundColor: isHome ? Colors.green.shade100 : (isNoStore ? Colors.orange.shade100 : Colors.blue.shade100),
+                            backgroundColor: chipBackground,
                             labelStyle: TextStyle(
-                              color: isHome ? Colors.green.shade700 : (isNoStore ? Colors.orange.shade700 : Colors.blue.shade700),
+                              color: chipTextColor,
                               fontSize: 12,
                             ),
                           ),

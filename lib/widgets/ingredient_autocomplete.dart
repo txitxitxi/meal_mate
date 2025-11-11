@@ -125,10 +125,10 @@ class _IngredientAutocompleteState extends ConsumerState<IngredientAutocomplete>
                       FocusScope.of(context).unfocus();
                     },
                     icon: const Icon(Icons.add, size: 16),
-                    label: Text('Create "${_lastQuery}"'),
+                    label: Text('Create "$_lastQuery"'),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blue.shade100,
-                      foregroundColor: Colors.blue.shade800,
+                      backgroundColor: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.8),
+                      foregroundColor: Theme.of(context).colorScheme.onPrimaryContainer,
                       elevation: 0,
                       padding: const EdgeInsets.symmetric(vertical: 8),
                     ),
@@ -147,7 +147,7 @@ class _IngredientAutocompleteState extends ConsumerState<IngredientAutocomplete>
             border: Border.all(color: Colors.grey.shade300),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.1),
+                color: Colors.black.withValues(alpha: 0.1),
                 blurRadius: 4,
                 offset: const Offset(0, 2),
               ),
@@ -160,7 +160,6 @@ class _IngredientAutocompleteState extends ConsumerState<IngredientAutocomplete>
               final defaultUnit = ingredient['default_unit'] as String?;
               final matchedTerm = ingredient['matched_term'] as String?;
               final locale = ingredient['locale'] as String?;
-              final isPrimary = ingredient['is_primary'] as bool? ?? false;
               
               // Show matched term if different from name (indicates bilingual match)
               final showBilingualMatch = matchedTerm != null && matchedTerm != name;
@@ -201,20 +200,32 @@ class _IngredientAutocompleteState extends ConsumerState<IngredientAutocomplete>
                                 ),
                                 if (showBilingualMatch) ...[
                                   const SizedBox(width: 8),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                    decoration: BoxDecoration(
-                                      color: locale == 'zh' ? Colors.blue.shade100 : Colors.green.shade100,
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                    child: Text(
-                                      locale == 'zh' ? '中' : 'EN',
-                                      style: TextStyle(
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.bold,
-                                        color: locale == 'zh' ? Colors.blue.shade700 : Colors.green.shade700,
-                                      ),
-                                    ),
+                                  Builder(
+                                    builder: (context) {
+                                      final colorScheme = Theme.of(context).colorScheme;
+                                      final isChineseLocale = locale == 'zh';
+                                      final containerColor = isChineseLocale
+                                          ? colorScheme.primaryContainer
+                                          : colorScheme.secondaryContainer;
+                                      final textColor = isChineseLocale
+                                          ? colorScheme.onPrimaryContainer
+                                          : colorScheme.onSecondaryContainer;
+                                      return Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: containerColor.withValues(alpha: 0.8),
+                                          borderRadius: BorderRadius.circular(8),
+                                        ),
+                                        child: Text(
+                                          isChineseLocale ? '中' : 'EN',
+                                          style: TextStyle(
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.bold,
+                                            color: textColor,
+                                          ),
+                                        ),
+                                      );
+                                    },
                                   ),
                                 ],
                               ],

@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/moduels.dart';
 import '../services/supabase_service.dart';
 import 'auth_providers.dart';
+import '../utils/logger.dart';
 
 // Add a refresh trigger
 final storesRefreshProvider = StateProvider<int>((ref) => 0);
@@ -11,11 +12,11 @@ final storesStreamProvider = StreamProvider<List<Store>>((ref) {
   ref.watch(storesRefreshProvider);
   final user = ref.watch(currentUserProvider);
   if (user == null) {
-    print('No user found, returning empty stores list');
+    logDebug('No user found, returning empty stores list');
     return Stream.value(<Store>[]);
   }
 
-  print('Fetching stores for user: ${user.id}');
+  logDebug('Fetching stores for user: ${user.id}');
   
   // Use a simple stream with proper user filtering
   return SupabaseService.client
@@ -24,20 +25,20 @@ final storesStreamProvider = StreamProvider<List<Store>>((ref) {
       .eq('user_id', user.id) // Filter by current user
       .order('priority', ascending: true)
       .map((rows) {
-        print('Raw stores data for user ${user.id}: $rows');
+        logDebug('Raw stores data for user ${user.id}: $rows');
         
         // Double-check that all stores belong to the current user
         final filteredRows = rows.where((row) {
           final storeUserId = row['user_id'] as String?;
           final belongsToUser = storeUserId == user.id;
           if (!belongsToUser) {
-            print('WARNING: Found store ${row['id']} belonging to user $storeUserId, expected ${user.id}');
+            logDebug('WARNING: Found store ${row['id']} belonging to user $storeUserId, expected ${user.id}');
           }
           return belongsToUser;
         }).toList();
         
         final stores = filteredRows.map((m) => Store.fromMap(m)).toList();
-        print('Processed ${stores.length} stores for user ${user.id}');
+        logDebug('Processed ${stores.length} stores for user ${user.id}');
         return stores;
       });
 });
@@ -59,7 +60,7 @@ final storeItemsProvider = FutureProvider.family<List<StoreItem>, String>((ref, 
       .maybeSingle();
   
   if (store == null) {
-    print('WARNING: Store $storeId does not belong to user ${user.id}');
+    logDebug('WARNING: Store $storeId does not belong to user ${user.id}');
     return [];
   }
   
@@ -114,7 +115,7 @@ final addStoreProvider = FutureProvider.family<void, ({String name, int? priorit
 final addStoreItemProvider = FutureProvider.family<void, ({String storeId, String ingredientName})>((ref, args) async {
   final client = SupabaseService.client;
   
-  print('Adding ingredient "${args.ingredientName}" to store "${args.storeId}"');
+  logDebug('Adding ingredient "${args.ingredientName}" to store "${args.storeId}"');
   
   // First, find or create the ingredient
   final ingredientResponse = await client
@@ -126,27 +127,27 @@ final addStoreItemProvider = FutureProvider.family<void, ({String storeId, Strin
   String ingredientId;
   if (ingredientResponse != null) {
     ingredientId = ingredientResponse['id'] as String;
-    print('Found existing ingredient with ID: $ingredientId');
+    logDebug('Found existing ingredient with ID: $ingredientId');
   } else {
     // Create new ingredient
-    print('Creating new ingredient: ${args.ingredientName}');
+    logDebug('Creating new ingredient: ${args.ingredientName}');
     final newIngredient = await client
         .from('ingredients')
         .insert({'name': args.ingredientName})
         .select('id')
         .single();
     ingredientId = newIngredient['id'] as String;
-    print('Created new ingredient with ID: $ingredientId');
+    logDebug('Created new ingredient with ID: $ingredientId');
   }
   
   // Then add the store item
-  print('Adding store item: store_id=${args.storeId}, ingredient_id=$ingredientId');
+  logDebug('Adding store item: store_id=${args.storeId}, ingredient_id=$ingredientId');
   await client.from('store_items').insert({
     'store_id': args.storeId,
     'ingredient_id': ingredientId,
   });
   
-  print('Successfully added ingredient to store');
+  logDebug('Successfully added ingredient to store');
 });
 
 // Provider for reordering stores (auto-assigning priority based on position)
@@ -158,14 +159,14 @@ final reorderStoresProvider = FutureProvider.family<void, List<String>>((ref, st
     throw Exception('User must be signed in to reorder stores');
   }
   
-  print('Reordering stores: ${storeIds.length} stores');
+  logDebug('Reordering stores: ${storeIds.length} stores');
   
   // Update priority for each store based on its position (1-based index)
   for (int i = 0; i < storeIds.length; i++) {
     final storeId = storeIds[i];
     final priority = i + 1; // 1-based priority (1 = highest priority)
     
-    print('Updating store $storeId to priority $priority');
+    logDebug('Updating store $storeId to priority $priority');
     
     await client
         .from('stores')
@@ -174,7 +175,7 @@ final reorderStoresProvider = FutureProvider.family<void, List<String>>((ref, st
         .eq('user_id', user.id);
   }
   
-  print('Store reordering complete!');
+  logDebug('Store reordering complete!');
 });
 
 // Provider to search stores by ingredient name (bilingual search)
@@ -264,7 +265,7 @@ final deleteStoreItemProvider = FutureProvider.family<void, String>((ref, storeI
     throw Exception('User must be signed in to delete store items');
   }
   
-  print('Deleting store item: $storeItemId');
+  logDebug('Deleting store item: $storeItemId');
   
   // First verify that the store item belongs to a store owned by the current user
   final storeItem = await client
@@ -291,7 +292,7 @@ final deleteStoreItemProvider = FutureProvider.family<void, String>((ref, storeI
       .delete()
       .eq('id', storeItemId);
   
-  print('Successfully deleted store item: $storeItemId');
+  logDebug('Successfully deleted store item: $storeItemId');
 });
 
 // Provider to check if an ingredient matches a search term (bilingual)

@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/moduels.dart';
 import '../services/supabase_service.dart';
 import 'auth_providers.dart';
+import '../utils/logger.dart';
 
 // Add a refresh trigger for home inventory
 final homeInventoryRefreshProvider = StateProvider<int>((ref) => 0);
@@ -12,11 +13,11 @@ final homeInventoryStreamProvider = StreamProvider<List<HomeInventoryItem>>((ref
   final user = ref.watch(currentUserProvider);
   
   if (user == null) {
-    print('No user found, returning empty home inventory list');
+    logDebug('No user found, returning empty home inventory list');
     return Stream.value(<HomeInventoryItem>[]);
   }
 
-  print('Fetching home inventory for user: ${user.id}');
+  logDebug('Fetching home inventory for user: ${user.id}');
   
   return SupabaseService.client
       .from('home_inventory')
@@ -24,10 +25,10 @@ final homeInventoryStreamProvider = StreamProvider<List<HomeInventoryItem>>((ref
       .eq('user_id', user.id)
       .order('ingredient_name', ascending: true)
       .map((rows) {
-        print('Raw home inventory data for user ${user.id}: $rows');
+        logDebug('Raw home inventory data for user ${user.id}: $rows');
         
         final items = rows.map((row) => HomeInventoryItem.fromMap(row)).toList();
-        print('Processed ${items.length} home inventory items for user ${user.id}');
+        logDebug('Processed ${items.length} home inventory items for user ${user.id}');
         return items;
       });
 });
@@ -41,7 +42,7 @@ final addHomeInventoryItemProvider = FutureProvider.family<void, ({String ingred
     throw Exception('User must be signed in to add home inventory items');
   }
   
-  print('Adding home inventory item: ${args.ingredientName}');
+  logDebug('Adding home inventory item: ${args.ingredientName}');
   
   // First, find or create the ingredient
   final ingredientResponse = await client
@@ -53,17 +54,17 @@ final addHomeInventoryItemProvider = FutureProvider.family<void, ({String ingred
   String ingredientId;
   if (ingredientResponse != null) {
     ingredientId = ingredientResponse['id'] as String;
-    print('Found existing ingredient with ID: $ingredientId');
+    logDebug('Found existing ingredient with ID: $ingredientId');
   } else {
     // Create new ingredient
-    print('Creating new ingredient: ${args.ingredientName}');
+    logDebug('Creating new ingredient: ${args.ingredientName}');
     final newIngredient = await client
         .from('ingredients')
         .insert({'name': args.ingredientName})
         .select('id')
         .single();
     ingredientId = newIngredient['id'] as String;
-    print('Created new ingredient with ID: $ingredientId');
+    logDebug('Created new ingredient with ID: $ingredientId');
   }
   
   // Add the home inventory item
@@ -75,7 +76,7 @@ final addHomeInventoryItemProvider = FutureProvider.family<void, ({String ingred
     'quantity': args.quantity,
   });
   
-  print('Successfully added home inventory item');
+  logDebug('Successfully added home inventory item');
 });
 
 // Provider to delete a home inventory item
@@ -87,7 +88,7 @@ final deleteHomeInventoryItemProvider = FutureProvider.family<void, String>((ref
     throw Exception('User must be signed in to delete home inventory items');
   }
   
-  print('Deleting home inventory item: $homeInventoryItemId');
+  logDebug('Deleting home inventory item: $homeInventoryItemId');
   
   // Verify that the item belongs to the current user
   final item = await client
@@ -107,7 +108,7 @@ final deleteHomeInventoryItemProvider = FutureProvider.family<void, String>((ref
       .delete()
       .eq('id', homeInventoryItemId);
   
-  print('Successfully deleted home inventory item: $homeInventoryItemId');
+  logDebug('Successfully deleted home inventory item: $homeInventoryItemId');
 });
 
 // Provider to get home inventory ingredient names (for meal planning)

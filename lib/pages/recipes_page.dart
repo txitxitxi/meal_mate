@@ -6,8 +6,8 @@ import '../../providers/auth_providers.dart';
 import '../../models/moduels.dart' hide Recipe; // Hide Recipe from moduels.dart to avoid conflict
 import '../../models/recipe.dart';
 import '../../utils/text_formatter.dart';
-import '../../utils/protein_preferences.dart';
 import '../../widgets/ingredient_autocomplete.dart';
+import '../utils/logger.dart';
 
 class RecipesPage extends ConsumerWidget {
   const RecipesPage({super.key});
@@ -15,6 +15,7 @@ class RecipesPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final recipesAsync = ref.watch(myRecipesStreamProvider);
+    final scheme = Theme.of(context).colorScheme;
     return Scaffold(
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => showDialog(context: context, builder: (_) => const _AddRecipeDialog()),
@@ -58,7 +59,7 @@ class RecipesPage extends ConsumerWidget {
                           return Container(
                             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                             decoration: BoxDecoration(
-                              color: Colors.blue.shade100,
+                              color: scheme.primaryContainer.withValues(alpha: 0.7),
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: Text(
@@ -66,7 +67,7 @@ class RecipesPage extends ConsumerWidget {
                               style: TextStyle(
                                 fontSize: 10,
                                 fontWeight: FontWeight.bold,
-                                color: Colors.blue.shade700,
+                                color: scheme.onPrimaryContainer,
                               ),
                             ),
                           );
@@ -88,6 +89,7 @@ class RecipesPage extends ConsumerWidget {
                           return const SizedBox.shrink(); // No toggle for saved recipes
                         }
                         
+                        final messenger = ScaffoldMessenger.of(context);
                         return IconButton(
                           onPressed: () async {
                             try {
@@ -105,13 +107,13 @@ class RecipesPage extends ConsumerWidget {
                               ref.invalidate(userOwnRecipesStreamProvider);
                               ref.invalidate(publicRecipesStreamProvider);
                               
-                              ScaffoldMessenger.of(context).showSnackBar(
+                              messenger.showSnackBar(
                                 SnackBar(
                                   content: Text('Recipe is now ${newVisibility.name}'),
                                 ),
                               );
                             } catch (e) {
-                              ScaffoldMessenger.of(context).showSnackBar(
+                              messenger.showSnackBar(
                                 SnackBar(content: Text('Failed to update recipe visibility: $e')),
                               );
                             }
@@ -121,8 +123,8 @@ class RecipesPage extends ConsumerWidget {
                                 ? Icons.public 
                                 : Icons.lock,
                             color: r.visibility == RecipeVisibility.public 
-                                ? Colors.green 
-                                : Colors.orange,
+                                ? scheme.secondary 
+                                : scheme.primary,
                           ),
                           tooltip: r.visibility == RecipeVisibility.public 
                               ? 'Make Private' 
@@ -140,6 +142,8 @@ class RecipesPage extends ConsumerWidget {
                           return const SizedBox.shrink(); // No menu for saved recipes
                         }
                         
+                        final messenger = ScaffoldMessenger.of(context);
+                        final navigator = Navigator.of(context);
                         return PopupMenuButton<String>(
                           onSelected: (value) {
                             if (value == 'edit') {
@@ -160,17 +164,17 @@ class RecipesPage extends ConsumerWidget {
                                     ),
                                     FilledButton(
                                       onPressed: () async {
-                                        Navigator.pop(context);
+                                        navigator.pop();
                                         try {
                                           await ref.read(deleteRecipeProvider(r.id).future);
                                           // Invalidate the recipes provider to refresh the list
                                           ref.invalidate(myRecipesStreamProvider);
                                           ref.invalidate(userOwnRecipesStreamProvider);
-                                          ScaffoldMessenger.of(context).showSnackBar(
+                                          messenger.showSnackBar(
                                             const SnackBar(content: Text('Recipe deleted successfully')),
                                           );
                                         } catch (e) {
-                                          ScaffoldMessenger.of(context).showSnackBar(
+                                          messenger.showSnackBar(
                                             SnackBar(content: Text('Failed to delete recipe: $e')),
                                           );
                                         }
@@ -305,10 +309,8 @@ class _AddRecipeDialogState extends ConsumerState<_AddRecipeDialog> {
   final _formKey = GlobalKey<FormState>();
   final List<IngredientInput> _ings = [IngredientInput()];
   bool _saving = false;
-  String _selectedProtein = 'none';
+  final String _selectedProtein = 'none';
   
-  final List<String> _availableProteins = ProteinPreferences.all;
-
   void _addRow() => setState(() => _ings.add(IngredientInput()));
 
   String _formatTitleForSave(String title) {
@@ -420,6 +422,8 @@ class _AddRecipeDialogState extends ConsumerState<_AddRecipeDialog> {
               : () async {
                   if (!_formKey.currentState!.validate()) return;
                   setState(() => _saving = true);
+                  final navigator = Navigator.of(context);
+                  final messenger = ScaffoldMessenger.of(context);
                   final args = (
                     title: _formatTitleForSave(_titleCtrl.text.trim()),
                     description: null,
@@ -438,10 +442,10 @@ class _AddRecipeDialogState extends ConsumerState<_AddRecipeDialog> {
                     ref.invalidate(myRecipesStreamProvider);
                     ref.invalidate(userOwnRecipesStreamProvider);
                     ref.invalidate(publicRecipesStreamProvider);
-                    if (mounted) Navigator.pop(context);
+                    if (mounted) navigator.pop();
                   } catch (e) {
                     if (!mounted) return;
-                    ScaffoldMessenger.of(context).showSnackBar(
+                    messenger.showSnackBar(
                       SnackBar(content: Text('Failed to save recipe: $e')),
                     );
                   } finally {
@@ -496,10 +500,10 @@ class _EditRecipeDialogState extends ConsumerState<_EditRecipeDialog> {
     final ingredientsAsync = ref.watch(recipeIngredientsProvider(widget.recipe.id));
     ingredientsAsync.when(
       data: (ingredients) {
-        print('Edit Recipe: Loading ingredients for recipe ${widget.recipe.id}, found ${ingredients.length} ingredients');
+        logDebug('Edit Recipe: Loading ingredients for recipe ${widget.recipe.id}, found ${ingredients.length} ingredients');
         if (ingredients.isNotEmpty && _ings.length == 1 && _ings.first.name.isEmpty) {
           // Only update if we still have the empty fallback ingredient
-          print('Edit Recipe: Updating ingredients list with ${ingredients.length} items');
+          logDebug('Edit Recipe: Updating ingredients list with ${ingredients.length} items');
           setState(() {
             _ings.clear();
             for (final ingredient in ingredients) {
@@ -514,11 +518,11 @@ class _EditRecipeDialogState extends ConsumerState<_EditRecipeDialog> {
         }
       },
       loading: () {
-        print('Edit Recipe: Loading ingredients...');
+        logDebug('Edit Recipe: Loading ingredients...');
         // Keep the empty ingredient while loading
       },
       error: (error, stack) {
-        print('Edit Recipe: Error loading ingredients: $error');
+        logDebug('Edit Recipe: Error loading ingredients: $error');
         // Keep the empty ingredient on error
       },
     );
@@ -605,6 +609,8 @@ class _EditRecipeDialogState extends ConsumerState<_EditRecipeDialog> {
               : () async {
                   if (!_formKey.currentState!.validate()) return;
                   setState(() => _saving = true);
+                  final navigator = Navigator.of(context);
+                  final messenger = ScaffoldMessenger.of(context);
                   try {
                     final args = (
                       recipeId: widget.recipe.id,
@@ -618,14 +624,14 @@ class _EditRecipeDialogState extends ConsumerState<_EditRecipeDialog> {
                     ref.invalidate(userOwnRecipesStreamProvider);
                     ref.invalidate(recipeIngredientsProvider(widget.recipe.id));
                     if (mounted) {
-                      Navigator.pop(context);
-                      ScaffoldMessenger.of(context).showSnackBar(
+                      navigator.pop();
+                      messenger.showSnackBar(
                         const SnackBar(content: Text('Recipe updated successfully')),
                       );
                     }
                   } catch (e) {
                     if (!mounted) return;
-                    ScaffoldMessenger.of(context).showSnackBar(
+                    messenger.showSnackBar(
                       SnackBar(content: Text('Failed to update recipe: $e')),
                     );
                   } finally {

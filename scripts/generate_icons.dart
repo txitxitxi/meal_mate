@@ -1,3 +1,5 @@
+// ignore_for_file: unused_import, unused_local_variable, avoid_print
+
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
