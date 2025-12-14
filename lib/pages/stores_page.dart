@@ -50,6 +50,7 @@ class _StoresPageState extends ConsumerState<StoresPage> {
     final storesAsync = ref.watch(storesStreamProvider);
     return Scaffold(
       floatingActionButton: FloatingActionButton.extended(
+        heroTag: 'add-store-fab',
         onPressed: () => showDialog(context: context, builder: (_) => const _AddStoreDialog()),
         icon: const Icon(Icons.add_business),
         label: const Text('Add Store'),

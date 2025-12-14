@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/recipe_providers.dart';
+import '../providers/auth_providers.dart';
 import '../models/recipe.dart';
+import '../utils/logger.dart';
 
 class PublicRecipesPage extends ConsumerStatefulWidget {
   const PublicRecipesPage({super.key});
@@ -13,6 +15,21 @@ class PublicRecipesPage extends ConsumerStatefulWidget {
 class _PublicRecipesPageState extends ConsumerState<PublicRecipesPage> {
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
+
+  @override
+  void initState() {
+    super.initState();
+    // Refresh data when page is opened
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        ref.invalidate(publicRecipesStreamProvider);
+        // Also invalidate search provider to ensure fresh data
+        if (_searchQuery.isNotEmpty) {
+          ref.invalidate(searchRecipesByIngredientProvider(_searchQuery));
+        }
+      }
+    });
+  }
 
   @override
   void dispose() {
@@ -140,9 +157,29 @@ class _PublicRecipesPageState extends ConsumerState<PublicRecipesPage> {
                     separatorBuilder: (_, __) => const SizedBox(height: 4),
                     itemBuilder: (context, i) {
                       final r = filteredRecipes[i];
-                      return Card(
-                        margin: const EdgeInsets.symmetric(horizontal: 4),
-                        child: ListTile(
+                      return Consumer(
+                        builder: (context, ref, child) {
+                          // Check if recipe is owned or saved
+                          final currentUser = ref.watch(currentUserProvider);
+                          final isOwnRecipe = currentUser?.id == r.authorId;
+                          final isSavedAsync = ref.watch(isRecipeSavedProvider(r.id));
+                          
+                          // Determine if card should be darker
+                          final bool isOwnedOrSaved = isOwnRecipe || 
+                            isSavedAsync.maybeWhen(
+                              data: (isSaved) => isSaved,
+                              orElse: () => false,
+                            );
+                          
+                          // Use slightly darker color if owned or saved
+                          final cardColor = isOwnedOrSaved 
+                            ? Theme.of(context).cardColor.withValues(alpha: 0.85)
+                            : Theme.of(context).cardColor;
+                          
+                          return Card(
+                            margin: const EdgeInsets.symmetric(horizontal: 4),
+                            color: cardColor,
+                            child: ListTile(
                           contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                           leading: r.imageUrl != null
                               ? ClipRRect(
@@ -151,39 +188,31 @@ class _PublicRecipesPageState extends ConsumerState<PublicRecipesPage> {
                                 )
                               : SizedBox(width: 48, height: 48, child: Icon(Icons.image_not_supported, size: 20)),
                           title: Text(r.title, style: const TextStyle(fontSize: 14)),
-                          subtitle: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Consumer(
-                                builder: (context, ref, child) {
-                                  if (r.authorId != null) {
-                                    final authorAsync = ref.watch(authorProfileProvider(r.authorId!));
-                                    return authorAsync.when(
-                                      data: (authorInfo) {
-                                        final authorName = _getAuthorDisplayName(r, authorInfo);
-                                        return Text('By $authorName', style: TextStyle(color: Colors.grey[600], fontSize: 11));
-                                      },
-                                      loading: () => Text('By Community', style: TextStyle(color: Colors.grey[600], fontSize: 11)),
-                                      error: (error, __) => Text('By Community', style: TextStyle(color: Colors.grey[600], fontSize: 11)),
-                                    );
-                                  }
-                                  return Text('By Community', style: TextStyle(color: Colors.grey[600], fontSize: 11));
-                                },
-                              ),
-                              if (r.protein != ProteinPreference.none)
-                                Padding(
-                                  padding: const EdgeInsets.only(top: 2),
-                                  child: Chip(
-                                    label: Text(r.protein.name.toUpperCase()),
-                                    backgroundColor: proteinContainer.withValues(alpha: 0.7),
-                                    labelStyle: TextStyle(color: proteinOnContainer, fontSize: 9),
-                                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                    padding: const EdgeInsets.symmetric(horizontal: 4),
-                                  ),
-                                ),
-                            ],
+                          subtitle: Consumer(
+                            builder: (context, ref, child) {
+                              if (r.authorId != null) {
+                                final authorAsync = ref.watch(authorProfileProvider(r.authorId!));
+                                return authorAsync.when(
+                                  data: (authorInfo) {
+                                    final authorName = _getAuthorDisplayName(r, authorInfo);
+                                    return Text('By $authorName', style: TextStyle(color: Colors.grey[600], fontSize: 11));
+                                  },
+                                  loading: () => Text('By Community', style: TextStyle(color: Colors.grey[600], fontSize: 11)),
+                                  error: (error, __) => Text('By Community', style: TextStyle(color: Colors.grey[600], fontSize: 11)),
+                                );
+                              }
+                              return Text('By Community', style: TextStyle(color: Colors.grey[600], fontSize: 11));
+                            },
                           ),
+                          trailing: r.protein != ProteinPreference.none
+                              ? Chip(
+                                  label: Text(r.protein.name.toUpperCase()),
+                                  backgroundColor: proteinContainer.withValues(alpha: 0.7),
+                                  labelStyle: TextStyle(color: proteinOnContainer, fontSize: 9),
+                                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                                )
+                              : null,
                           onTap: () {
                             // Show recipe details
                             showDialog(
@@ -201,7 +230,26 @@ class _PublicRecipesPageState extends ConsumerState<PublicRecipesPage> {
                                           borderRadius: BorderRadius.circular(8),
                                           child: Image.network(r.imageUrl!, width: 200, height: 150, fit: BoxFit.cover),
                                         ),
-                                      const SizedBox(height: 16),
+                                      if (r.imageUrl != null) const SizedBox(height: 16),
+                                      if (r.protein != ProteinPreference.none) ...[
+                                        Row(
+                                          children: [
+                                            const Text('Protein Type: ', style: TextStyle(fontWeight: FontWeight.bold)),
+                                            Chip(
+                                              label: Text(r.protein.name.toUpperCase()),
+                                              backgroundColor: Theme.of(context).colorScheme.secondaryContainer.withValues(alpha: 0.7),
+                                              labelStyle: TextStyle(
+                                                color: Theme.of(context).colorScheme.onSecondaryContainer,
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                            ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 12),
+                                      ],
                                       const Text('Ingredients:', style: TextStyle(fontWeight: FontWeight.bold)),
                                       const SizedBox(height: 8),
                                       Consumer(
@@ -272,8 +320,20 @@ class _PublicRecipesPageState extends ConsumerState<PublicRecipesPage> {
                                   ),
                                   Consumer(
                                     builder: (context, ref, child) {
+                                      // Check if this is the user's own recipe
+                                      final currentUser = ref.watch(currentUserProvider);
+                                      final isOwnRecipe = currentUser?.id == r.authorId;
+                                      
+                                      // Don't show save/unsave for own recipes
+                                      if (isOwnRecipe) {
+                                        return const SizedBox.shrink();
+                                      }
+                                      
+                                      // Use a key to force rebuild when recipe ID changes
                                       final isSavedAsync = ref.watch(isRecipeSavedProvider(r.id));
                                       final messenger = ScaffoldMessenger.of(context);
+                                      
+                                      // Watch for changes and rebuild
                                       return isSavedAsync.when(
                                         data: (isSaved) => FilledButton.icon(
                                           onPressed: () async {
@@ -283,17 +343,41 @@ class _PublicRecipesPageState extends ConsumerState<PublicRecipesPage> {
                                                 messenger.showSnackBar(
                                                   const SnackBar(content: Text('Recipe unsaved')),
                                                 );
+                                                // Wait a bit for database operation to complete
+                                                await Future.delayed(const Duration(milliseconds: 300));
+                                                // Refresh the saved status - this will update the button in the dialog
+                                                ref.invalidate(isRecipeSavedProvider(r.id));
+                                                // Trigger refresh of saved recipes stream
+                                                ref.read(savedRecipesRefreshProvider.notifier).state++;
+                                                // Refresh all recipe lists
+                                                ref.invalidate(userSavedRecipesStreamProvider);
+                                                ref.invalidate(myRecipesStreamProvider);
+                                                // Also refresh the public recipes list to update the UI
+                                                ref.invalidate(publicRecipesStreamProvider);
                                               } else {
                                                 await ref.read(saveRecipeProvider(r.id).future);
                                                 messenger.showSnackBar(
                                                   const SnackBar(content: Text('Recipe saved to your collection!')),
                                                 );
+                                                // Wait a bit for database operation to complete
+                                                await Future.delayed(const Duration(milliseconds: 300));
+                                                // Refresh the saved status - this will update the button in the dialog
+                                                ref.invalidate(isRecipeSavedProvider(r.id));
+                                                // Trigger refresh of saved recipes stream
+                                                ref.read(savedRecipesRefreshProvider.notifier).state++;
+                                                // Refresh all recipe lists
+                                                ref.invalidate(userSavedRecipesStreamProvider);
+                                                ref.invalidate(myRecipesStreamProvider);
+                                                // Also refresh the public recipes list to update the UI
+                                                ref.invalidate(publicRecipesStreamProvider);
                                               }
-                                              // Refresh the saved status
-                                              ref.invalidate(isRecipeSavedProvider(r.id));
                                             } catch (e) {
+                                              logDebug('Error saving/unsaving recipe: $e');
                                               messenger.showSnackBar(
-                                                SnackBar(content: Text('Failed to ${isSaved ? 'unsave' : 'save'} recipe: $e')),
+                                                SnackBar(
+                                                  content: Text('Failed to ${isSaved ? 'unsave' : 'save'} recipe: ${e.toString()}'),
+                                                  duration: const Duration(seconds: 4),
+                                                ),
                                               );
                                             }
                                           },
@@ -316,7 +400,17 @@ class _PublicRecipesPageState extends ConsumerState<PublicRecipesPage> {
                                               messenger.showSnackBar(
                                                 const SnackBar(content: Text('Recipe saved to your collection!')),
                                               );
+                                              // Wait a bit for database operation to complete
+                                              await Future.delayed(const Duration(milliseconds: 300));
+                                              // Refresh the saved status - this will update the button in the dialog
                                               ref.invalidate(isRecipeSavedProvider(r.id));
+                                              // Trigger refresh of saved recipes stream
+                                              ref.read(savedRecipesRefreshProvider.notifier).state++;
+                                              // Refresh all recipe lists
+                                              ref.invalidate(userSavedRecipesStreamProvider);
+                                              ref.invalidate(myRecipesStreamProvider);
+                                              // Also refresh the public recipes list to update the UI
+                                              ref.invalidate(publicRecipesStreamProvider);
                                             } catch (e) {
                                               messenger.showSnackBar(
                                                 SnackBar(content: Text('Failed to save recipe: $e')),
@@ -334,6 +428,8 @@ class _PublicRecipesPageState extends ConsumerState<PublicRecipesPage> {
                             );
                           },
                         ),
+                      );
+                        },
                       );
                     },
                   ),

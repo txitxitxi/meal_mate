@@ -6,6 +6,84 @@ import '../services/translation_service.dart';
 import 'auth_providers.dart';
 import '../utils/logger.dart';
 
+// Provider to fetch supported protein enum values from the database
+// This queries the database enum type dynamically to get all valid values
+final supportedProteinValuesProvider = FutureProvider<Set<String>>((ref) async {
+  try {
+    final client = SupabaseService.client;
+    
+    // Query the database function to get all enum values for protein_pref
+    final response = await client.rpc('get_protein_enum_values');
+    
+    // The RPC function returns a list of objects with 'enum_value' field
+    final enumValues = <String>{};
+    if (response is List) {
+      for (final row in response) {
+        if (row is Map && row['enum_value'] != null) {
+          enumValues.add(row['enum_value'] as String);
+        } else if (row is String) {
+          enumValues.add(row);
+        }
+      }
+    }
+    
+    logDebug('Found ${enumValues.length} protein enum values from database: $enumValues');
+    
+    // If we got values, return them; otherwise fall back to expected values
+    if (enumValues.isNotEmpty) {
+      return enumValues;
+    } else {
+      logDebug('No enum values returned, using fallback list.');
+      // Fallback to all expected values after enum update
+      return {
+        'none',
+        'chicken',
+        'beef',
+        'egg',
+        'fish',
+        'pork',
+        'seafood',
+        'tofu',
+        'vegetarian',
+        'vegan',
+      };
+    }
+  } catch (e) {
+    logDebug('Error querying protein enum values: $e. Using fallback list.');
+    // Fallback to all expected values after enum update
+    return {
+      'none',
+      'chicken',
+      'beef',
+      'egg',
+      'fish',
+      'pork',
+      'seafood',
+      'tofu',
+      'vegetarian',
+      'vegan',
+    };
+  }
+});
+
+// Helper function to map protein preference to database-compatible values
+// Now uses the dynamically queried enum values from the database
+String? _mapProteinForDatabase(ProteinPreference protein, Set<String>? supportedValues) {
+  final proteinName = protein.name;
+  
+  // If we have the supported values list, use it
+  // Otherwise, assume all values are supported (after enum update)
+  final isSupported = supportedValues?.contains(proteinName) ?? true;
+  
+  if (isSupported) {
+    return proteinName;
+  } else {
+    // Unsupported values are stored as null
+    logDebug('Protein value "$proteinName" is not supported by database enum, storing as null');
+    return null;
+  }
+}
+
 // Helper function to categorize ingredients based on name
 String _categorizeIngredient(String name) {
   final lowerName = name.toLowerCase();
@@ -135,12 +213,31 @@ final saveRecipeProvider = FutureProvider.family<void, String>((ref, recipeId) a
   }
 
   try {
+    // Check if already saved first
+    final existing = await client
+        .from('recipe_saves')
+        .select('user_id')
+        .eq('user_id', uid)
+        .eq('recipe_id', recipeId)
+        .maybeSingle();
+    
+    if (existing != null) {
+      logDebug('Recipe $recipeId is already saved by user $uid');
+      return; // Already saved, no error
+    }
+    
     await client.from('recipe_saves').insert({
       'user_id': uid,
       'recipe_id': recipeId,
     });
+    logDebug('Successfully saved recipe $recipeId for user $uid');
   } catch (e) {
-    logDebug('Failed to save recipe: $e');
+    logDebug('Failed to save recipe $recipeId: $e');
+    // Provide more detailed error message
+    if (e.toString().contains('duplicate') || e.toString().contains('unique')) {
+      logDebug('Recipe is already saved (duplicate key)');
+      return; // Already saved, treat as success
+    }
     rethrow;
   }
 });
@@ -219,8 +316,13 @@ final userOwnRecipesStreamProvider = StreamProvider<List<Recipe>>((ref) {
       .map((rows) => rows.map((m) => Recipe.fromMap(m)).toList());
 });
 
+// Refresh trigger for saved recipes
+final savedRecipesRefreshProvider = StateProvider<int>((ref) => 0);
+
 // Stream of user's saved recipes
 final userSavedRecipesStreamProvider = StreamProvider<List<Recipe>>((ref) {
+  // Watch the refresh trigger to force refresh when needed
+  ref.watch(savedRecipesRefreshProvider);
   final user = ref.watch(currentUserProvider);
   if (user == null) {
     return Stream.value(<Recipe>[]);
@@ -228,25 +330,41 @@ final userSavedRecipesStreamProvider = StreamProvider<List<Recipe>>((ref) {
 
   return SupabaseService.client
       .from('recipe_saves')
-      .stream(primaryKey: ['id'])
+      .stream(primaryKey: ['user_id', 'recipe_id'])
       .eq('user_id', user.id)
       .order('created_at', ascending: false)
-      .map((saves) => saves.map((save) => save['recipe_id'] as String).toList())
+      .map((saves) {
+        logDebug('Recipe saves stream updated: ${saves.length} saves');
+        return saves.map((save) => save['recipe_id'] as String).toList();
+      })
       .asyncMap((recipeIds) async {
+        logDebug('Loading ${recipeIds.length} saved recipes');
         if (recipeIds.isEmpty) return <Recipe>[];
         
         final recipes = await SupabaseService.client
             .from('recipes')
             .select('*')
-            .inFilter('id', recipeIds)
-            .eq('visibility', 'public'); // Only load public recipes
+            .inFilter('id', recipeIds);
+            // Removed .eq('visibility', 'public') to allow loading any saved recipe
         
         // Maintain the order from recipe_saves
-        final recipeMap = Map.fromEntries(
-          recipes.map((r) => MapEntry(r['id'] as String, Recipe.fromMap(r)))
-        );
+        final recipeMap = <String, Recipe>{};
+        for (final r in recipes) {
+          try {
+            recipeMap[r['id'] as String] = Recipe.fromMap(r);
+          } catch (e) {
+            logDebug('Error parsing recipe ${r['id']}: $e');
+          }
+        }
         
-        return recipeIds.map((id) => recipeMap[id]!).toList();
+        // Filter out any recipes that failed to parse
+        final validRecipes = recipeIds
+            .where((id) => recipeMap.containsKey(id))
+            .map((id) => recipeMap[id]!)
+            .toList();
+        
+        logDebug('Successfully loaded ${validRecipes.length} saved recipes');
+        return validRecipes;
       });
 });
 
@@ -314,12 +432,23 @@ final addRecipeProvider = FutureProvider.family<void, ({
   // Note: Profiles are handled separately in the auth flow
   // Don't try to upsert profiles here as it may cause RLS issues
   
+  // Get supported protein values from database (with fallback)
+  final supportedValuesAsync = ref.read(supportedProteinValuesProvider);
+  final supportedValues = await supportedValuesAsync.when(
+    data: (values) => values,
+    loading: () => null, // Use null to allow all values (after enum update)
+    error: (_, __) => null,
+  );
+  
+  // Map protein preference to database-compatible values
+  final proteinValue = _mapProteinForDatabase(args.protein, supportedValues);
+  
   final insert = <String, dynamic>{
     'title': args.title,
     'user_id': uid, // Legacy field - now guaranteed to exist in users table
     'author_id': uid, // New multi-user field - references auth.users(id)
     'description': args.description,
-    'protein': args.protein.name,
+    'protein': proteinValue, // May be null for unsupported values
     'cuisine': args.cuisine,
     'servings': args.servings,
     'prep_time_min': args.prepTimeMin,
@@ -544,17 +673,38 @@ final updateRecipeProvider = FutureProvider.family<void, ({
   String recipeId,
   String title,
   String? photoUrl,
+  ProteinPreference protein,
   List<IngredientInput> ingredients,
 })>((ref, args) async {
   final client = SupabaseService.client;
   
+  // Get supported protein values from database (with fallback)
+  final supportedValuesAsync = ref.read(supportedProteinValuesProvider);
+  final supportedValues = await supportedValuesAsync.when(
+    data: (values) => values,
+    loading: () => null, // Use null to allow all values (after enum update)
+    error: (_, __) => null,
+  );
+  
   // Update the recipe
+  // Map protein preference to database-compatible values dynamically
+  final updateData = <String, dynamic>{
+    'title': args.title,
+    if (args.photoUrl != null) 'image_url': args.photoUrl,
+  };
+  
+  // Map protein value using dynamically queried enum values
+  final proteinValue = _mapProteinForDatabase(args.protein, supportedValues);
+  if (proteinValue != null) {
+    updateData['protein'] = proteinValue;
+  } else {
+    // For unsupported values, set to null
+    updateData['protein'] = null;
+  }
+  
   await client
       .from('recipes')
-      .update({
-        'title': args.title,
-        if (args.photoUrl != null) 'image_url': args.photoUrl,
-      })
+      .update(updateData)
       .eq('id', args.recipeId);
   
   // Delete existing ingredients

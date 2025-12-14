@@ -9,15 +9,34 @@ import '../../utils/text_formatter.dart';
 import '../../widgets/ingredient_autocomplete.dart';
 import '../utils/logger.dart';
 
-class RecipesPage extends ConsumerWidget {
+class RecipesPage extends ConsumerStatefulWidget {
   const RecipesPage({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<RecipesPage> createState() => _RecipesPageState();
+}
+
+class _RecipesPageState extends ConsumerState<RecipesPage> {
+  @override
+  void initState() {
+    super.initState();
+    // Refresh data when page is opened
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        ref.invalidate(myRecipesStreamProvider);
+        ref.invalidate(userOwnRecipesStreamProvider);
+        ref.invalidate(userSavedRecipesStreamProvider);
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final recipesAsync = ref.watch(myRecipesStreamProvider);
     final scheme = Theme.of(context).colorScheme;
     return Scaffold(
       floatingActionButton: FloatingActionButton.extended(
+        heroTag: 'add-recipe-fab',
         onPressed: () => showDialog(context: context, builder: (_) => const _AddRecipeDialog()),
         icon: const Icon(Icons.restaurant),
         label: const Text('Add Recipe'),
@@ -36,10 +55,20 @@ class RecipesPage extends ConsumerWidget {
             padding: const EdgeInsets.all(12),
             itemCount: recipes.length,
             separatorBuilder: (_, __) => const SizedBox(height: 8),
-            itemBuilder: (context, i) {
-              final r = recipes[i];
-            return Card(
-              child: ListTile(
+                    itemBuilder: (context, i) {
+                      final r = recipes[i];
+                      return Consumer(
+                        builder: (context, ref, child) {
+                          // Check if recipe is owned (all recipes in "My Recipe" are either owned or saved)
+                          final currentUser = ref.watch(currentUserProvider);
+                          final isOwnRecipe = currentUser?.id == r.authorId;
+                          
+                          // Use slightly darker color if owned or saved (all recipes here are one or the other)
+                          final cardColor = Theme.of(context).cardColor.withValues(alpha: 0.85);
+                          
+                          return Card(
+                            color: cardColor,
+                            child: ListTile(
                 leading: r.imageUrl != null
                     ? ClipRRect(
                         borderRadius: BorderRadius.circular(8),
@@ -212,7 +241,26 @@ class RecipesPage extends ConsumerWidget {
                                 borderRadius: BorderRadius.circular(8),
                                 child: Image.network(r.imageUrl!, width: 200, height: 150, fit: BoxFit.cover),
                               ),
-                            const SizedBox(height: 16),
+                            if (r.imageUrl != null) const SizedBox(height: 16),
+                            if (r.protein != ProteinPreference.none) ...[
+                              Row(
+                                children: [
+                                  const Text('Protein Type: ', style: TextStyle(fontWeight: FontWeight.bold)),
+                                  Chip(
+                                    label: Text(r.protein.name.toUpperCase()),
+                                    backgroundColor: Theme.of(context).colorScheme.secondaryContainer.withValues(alpha: 0.7),
+                                    labelStyle: TextStyle(
+                                      color: Theme.of(context).colorScheme.onSecondaryContainer,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 12),
+                            ],
                             const Text('Ingredients:', style: TextStyle(fontWeight: FontWeight.bold)),
                             const SizedBox(height: 8),
                             Consumer(
@@ -281,12 +329,98 @@ class RecipesPage extends ConsumerWidget {
                           onPressed: () => Navigator.pop(context),
                           child: const Text('Close'),
                         ),
+                        Consumer(
+                          builder: (context, ref, child) {
+                            final currentUser = ref.watch(currentUserProvider);
+                            final isOwnRecipe = currentUser?.id == r.authorId;
+                            
+                            // Don't show save/unsave for own recipes
+                            if (isOwnRecipe) {
+                              return const SizedBox.shrink();
+                            }
+                            
+                            final isSavedAsync = ref.watch(isRecipeSavedProvider(r.id));
+                            final messenger = ScaffoldMessenger.of(context);
+                            return isSavedAsync.when(
+                              data: (isSaved) => FilledButton.icon(
+                                onPressed: () async {
+                                  try {
+                                    if (isSaved) {
+                                      await ref.read(unsaveRecipeProvider(r.id).future);
+                                      messenger.showSnackBar(
+                                        const SnackBar(content: Text('Recipe unsaved')),
+                                      );
+                                    } else {
+                                      await ref.read(saveRecipeProvider(r.id).future);
+                                      messenger.showSnackBar(
+                                        const SnackBar(content: Text('Recipe saved to your collection!')),
+                                      );
+                                    }
+                                    // Wait a bit for the database operation to complete
+                                    await Future.delayed(const Duration(milliseconds: 300));
+                                    // Refresh all related providers BEFORE closing dialog
+                                    ref.invalidate(isRecipeSavedProvider(r.id));
+                                    ref.invalidate(userSavedRecipesStreamProvider);
+                                    ref.invalidate(myRecipesStreamProvider);
+                                    ref.invalidate(userOwnRecipesStreamProvider);
+                                    // Close dialog after refreshing
+                                    if (context.mounted) {
+                                      Navigator.pop(context);
+                                    }
+                                  } catch (e) {
+                                    messenger.showSnackBar(
+                                      SnackBar(content: Text('Failed to ${isSaved ? 'unsave' : 'save'} recipe: $e')),
+                                    );
+                                  }
+                                },
+                                icon: Icon(isSaved ? Icons.bookmark_remove : Icons.bookmark_add),
+                                label: Text(isSaved ? 'Unsave' : 'Save Recipe'),
+                              ),
+                              loading: () => FilledButton.icon(
+                                onPressed: null, // Disabled during loading
+                                icon: const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                ),
+                                label: const Text('Save Recipe'),
+                              ),
+                              error: (_, __) => FilledButton.icon(
+                                onPressed: () async {
+                                  try {
+                                    await ref.read(saveRecipeProvider(r.id).future);
+                                    messenger.showSnackBar(
+                                      const SnackBar(content: Text('Recipe saved to your collection!')),
+                                    );
+                                    // Close dialog first
+                                    Navigator.pop(context);
+                                    // Wait a bit for the database operation to complete
+                                    await Future.delayed(const Duration(milliseconds: 300));
+                                    // Refresh all related providers
+                                    ref.invalidate(isRecipeSavedProvider(r.id));
+                                    ref.invalidate(userSavedRecipesStreamProvider);
+                                    ref.invalidate(myRecipesStreamProvider);
+                                    ref.invalidate(userOwnRecipesStreamProvider);
+                                  } catch (e) {
+                                    messenger.showSnackBar(
+                                      SnackBar(content: Text('Failed to save recipe: $e')),
+                                    );
+                                  }
+                                },
+                                icon: const Icon(Icons.bookmark_add),
+                                label: const Text('Save Recipe'),
+                              ),
+                            );
+                          },
+                        ),
                       ],
                     ),
                   );
                 },
               ),
             );
+                        },
+                      );
             },
           ),
         ),
@@ -309,7 +443,7 @@ class _AddRecipeDialogState extends ConsumerState<_AddRecipeDialog> {
   final _formKey = GlobalKey<FormState>();
   final List<IngredientInput> _ings = [IngredientInput()];
   bool _saving = false;
-  final String _selectedProtein = 'none';
+  ProteinPreference _selectedProtein = ProteinPreference.none;
   
   void _addRow() => setState(() => _ings.add(IngredientInput()));
 
@@ -321,30 +455,6 @@ class _AddRecipeDialogState extends ConsumerState<_AddRecipeDialog> {
     return title;
   }
 
-  ProteinPreference _parseProteinPreference(String protein) {
-    switch (protein.toLowerCase()) {
-      case 'chicken':
-        return ProteinPreference.chicken;
-      case 'beef':
-        return ProteinPreference.beef;
-      case 'egg':
-        return ProteinPreference.egg;
-      case 'fish':
-        return ProteinPreference.fish;
-      case 'pork':
-        return ProteinPreference.pork;
-      case 'seafood':
-        return ProteinPreference.seafood;
-      case 'tofu':
-        return ProteinPreference.tofu;
-      case 'vegetarian':
-        return ProteinPreference.vegetarian;
-      case 'vegan':
-        return ProteinPreference.vegan;
-      default:
-        return ProteinPreference.none;
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -368,6 +478,27 @@ class _AddRecipeDialogState extends ConsumerState<_AddRecipeDialog> {
                 TextFormField(
                   controller: _photoCtrl,
                   decoration: const InputDecoration(labelText: 'Photo URL (optional)'),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<ProteinPreference>(
+                  value: _selectedProtein,
+                  decoration: const InputDecoration(
+                    labelText: 'Protein Type (optional)',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: ProteinPreference.values.map((pref) {
+                    return DropdownMenuItem(
+                      value: pref,
+                      child: Text(pref == ProteinPreference.none 
+                          ? 'None' 
+                          : pref.name[0].toUpperCase() + pref.name.substring(1))
+                    );
+                  }).toList(),
+                  onChanged: (value) {
+                    if (value != null) {
+                      setState(() => _selectedProtein = value);
+                    }
+                  },
                 ),
                 const SizedBox(height: 12),
                 const Text('Ingredients'),
@@ -428,7 +559,7 @@ class _AddRecipeDialogState extends ConsumerState<_AddRecipeDialog> {
                     title: _formatTitleForSave(_titleCtrl.text.trim()),
                     description: null,
                     photoUrl: _photoCtrl.text.trim().isEmpty ? null : _photoCtrl.text.trim(),
-                    protein: _parseProteinPreference(_selectedProtein),
+                    protein: _selectedProtein,
                     cuisine: null,
                     servings: 2,
                     prepTimeMin: null,
@@ -473,12 +604,14 @@ class _EditRecipeDialogState extends ConsumerState<_EditRecipeDialog> {
   final _formKey = GlobalKey<FormState>();
   final List<IngredientInput> _ings = [];
   bool _saving = false;
+  late ProteinPreference _selectedProtein;
 
   @override
   void initState() {
     super.initState();
     _titleCtrl.text = widget.recipe.title;
     _photoCtrl.text = widget.recipe.imageUrl ?? '';
+    _selectedProtein = widget.recipe.protein;
     // Start with one empty ingredient as fallback
     _ings.add(IngredientInput());
   }
@@ -549,6 +682,27 @@ class _EditRecipeDialogState extends ConsumerState<_EditRecipeDialog> {
                   decoration: const InputDecoration(labelText: 'Photo URL (optional)'),
                 ),
                 const SizedBox(height: 12),
+                DropdownButtonFormField<ProteinPreference>(
+                  value: _selectedProtein,
+                  decoration: const InputDecoration(
+                    labelText: 'Protein Type (optional)',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: ProteinPreference.values.map((pref) {
+                    return DropdownMenuItem(
+                      value: pref,
+                      child: Text(pref == ProteinPreference.none 
+                          ? 'None' 
+                          : pref.name[0].toUpperCase() + pref.name.substring(1)),
+                    );
+                  }).toList(),
+                  onChanged: (value) {
+                    if (value != null) {
+                      setState(() => _selectedProtein = value);
+                    }
+                  },
+                ),
+                const SizedBox(height: 12),
                 const Text('Ingredients'),
                 const SizedBox(height: 8),
                 ..._ings.asMap().entries.map((e) {
@@ -616,6 +770,7 @@ class _EditRecipeDialogState extends ConsumerState<_EditRecipeDialog> {
                       recipeId: widget.recipe.id,
                       title: _formatTitleForSave(_titleCtrl.text.trim()),
                       photoUrl: _photoCtrl.text.trim().isEmpty ? null : _photoCtrl.text.trim(),
+                      protein: _selectedProtein,
                       ingredients: _ings,
                     );
                     await ref.read(updateRecipeProvider(args).future);
