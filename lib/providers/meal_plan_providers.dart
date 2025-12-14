@@ -410,6 +410,7 @@ Future<List<ShoppingListItem>> _loadShoppingListForUser(String userId) async {
       final storeResponse = await SupabaseService.client
           .from('stores')
           .select('id, name')
+          .eq('user_id', userId)
           .inFilter('id', storeIds);
       for (final store in storeResponse) {
         stores[store['id'] as String] = store['name'] as String;
@@ -567,9 +568,11 @@ final generateShoppingListProvider = FutureProvider<void>((ref) async {
       .eq('user_id', user.id)
       .order('priority');
   
+  // Filter store_items by stores that belong to the current user
   final storeItems = await client
       .from('store_items')
-      .select('store_id, ingredient_id, ingredients!inner(name)');
+      .select('store_id, ingredient_id, ingredients!inner(name), stores!inner(user_id)')
+      .eq('stores.user_id', user.id);
   
   logDebug('Store items found: ${storeItems.length}');
   logDebug('Store items data: $storeItems');
@@ -760,14 +763,17 @@ Future<void> _generateShoppingListFromPlan(
   await client.from('shopping_list_items').delete().eq('meal_plan_id', weeklyPlanId);
   
   // Get stores and their items to categorize ingredients
+  // Filter store_items by stores that belong to the current user
   final storeItems = await client
       .from('store_items')
-      .select('store_id, ingredient_id, ingredients!inner(name)');
+      .select('store_id, ingredient_id, ingredients!inner(name), stores!inner(user_id)')
+      .eq('stores.user_id', userId);
   
-  // Get store priorities for ingredient assignment
+  // Get store priorities for ingredient assignment - filter by current user
   final stores = await client
       .from('stores')
       .select('id, name, priority')
+      .eq('user_id', userId)
       .order('priority', ascending: true);
   
   final storePriorities = <String, int>{};

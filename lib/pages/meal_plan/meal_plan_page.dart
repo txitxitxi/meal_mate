@@ -85,6 +85,7 @@ class _MealPlanPageState extends ConsumerState<MealPlanPage> with TickerProvider
 
     return Scaffold(
       floatingActionButton: FloatingActionButton.extended(
+        heroTag: 'generate-plan-fab',
         onPressed: () {
           // Auto-collapse protein preferences when generating plan
           if (_isProteinPrefsExpanded) {

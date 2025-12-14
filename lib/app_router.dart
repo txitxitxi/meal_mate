@@ -46,26 +46,45 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: '/home',
         name: 'home',
         builder: (context, state) => const HomePage(),
+        routes: [
+          GoRoute(
+            path: 'public-recipes',
+            name: 'public-recipes',
+            builder: (context, state) => const HomePage(),
+          ),
+          GoRoute(
+            path: 'recipes',
+            name: 'recipes',
+            builder: (context, state) => const HomePage(),
+          ),
+          GoRoute(
+            path: 'stores',
+            name: 'stores',
+            builder: (context, state) => const HomePage(),
+          ),
+          GoRoute(
+            path: 'weekly',
+            name: 'weekly',
+            builder: (context, state) => const HomePage(),
+          ),
+        ],
       ),
+      // Keep these routes for backward compatibility, but redirect to /home versions
       GoRoute(
         path: '/public-recipes',
-        name: 'public-recipes',
-        builder: (context, state) => const PublicRecipesPage(),
+        redirect: (context, state) => '/home/public-recipes',
       ),
       GoRoute(
         path: '/recipes',
-        name: 'recipes',
-        builder: (context, state) => const RecipesPage(),
+        redirect: (context, state) => '/home/recipes',
       ),
       GoRoute(
         path: '/stores',
-        name: 'stores',
-        builder: (context, state) => const StoresPage(),
+        redirect: (context, state) => '/home/stores',
       ),
       GoRoute(
         path: '/weekly',
-        name: 'weekly',
-        builder: (context, state) => const MealPlanPage(),
+        redirect: (context, state) => '/home/weekly',
       ),
     ],
     redirect: (context, state) async {

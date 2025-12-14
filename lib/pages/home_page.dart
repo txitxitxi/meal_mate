@@ -23,18 +23,64 @@ class _HomePageState extends ConsumerState<HomePage> {
     super.initState();
     // Set initial tab based on current route
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final location = GoRouterState.of(context).matchedLocation;
-      final tabIndex = _tabs.indexOf(location);
-      if (tabIndex != -1 && tabIndex != _index) {
-        setState(() => _index = tabIndex);
-      }
+      _updateIndexFromRoute();
     });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Update index whenever dependencies change (e.g., route changes)
+    _updateIndexFromRoute();
+  }
+
+  void _updateIndexFromRoute() {
+    if (!mounted) return;
+    try {
+      final router = GoRouter.of(context);
+      final location = router.routerDelegate.currentConfiguration.uri.path;
+      
+    // Try to match the current route
+    int newIndex = 0;
+    if (location.contains('public-recipes') || location == '/home' || location == '/home/') {
+      newIndex = 0;
+    } else if (location.contains('recipes')) {
+      newIndex = 1;
+    } else if (location.contains('stores')) {
+      newIndex = 2;
+    } else if (location.contains('weekly')) {
+      newIndex = 3;
+    }
+      
+      if (newIndex != _index) {
+        setState(() => _index = newIndex);
+      }
+    } catch (e) {
+      // If route detection fails, try using GoRouterState
+      try {
+        final state = GoRouterState.of(context);
+        final location = state.matchedLocation;
+        final tabIndex = _tabs.indexOf(location);
+        if (tabIndex != -1 && tabIndex != _index) {
+          setState(() => _index = tabIndex);
+        }
+      } catch (_) {
+        // Fallback: keep current index
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final userProfile = ref.watch(userProfileProvider);
     final theme = Theme.of(context);
+    
+    // Update index from route on every build to ensure sync
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _updateIndexFromRoute();
+      }
+    });
     
     return Scaffold(
       appBar: AppBar(
@@ -141,7 +187,11 @@ class _HomePageState extends ConsumerState<HomePage> {
         ],
         onDestinationSelected: (i) {
           setState(() => _index = i);
-          // Don't navigate, just switch the tab content
+          // Navigate to the corresponding route only if different
+          final currentLocation = GoRouter.of(context).routerDelegate.currentConfiguration.uri.path;
+          if (currentLocation != _tabs[i]) {
+            context.go(_tabs[i]);
+          }
         },
       ),
     );
