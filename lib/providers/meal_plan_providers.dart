@@ -300,6 +300,13 @@ final generatePlanProvider = FutureProvider.family<String, Map<String, dynamic>>
     logDebug('Original protein preferences: $proteinPreferences');
     logDebug('Valid protein preferences: $validProteinPreferences');
     
+    // Ensure user exists in public.users table (for legacy constraint)
+    await client.from('users').upsert({
+      'id': user.id,
+      'display_name': user.userMetadata?['full_name'] ?? 
+                     user.email?.split('@')[0],
+    });
+    
     // Use upsert to update existing plan or create new one
     try {
       final weeklyPlanResponse = await client.from('meal_plans').upsert({
@@ -433,15 +440,21 @@ Future<List<ShoppingListItem>> _loadShoppingListForUser(String userId) async {
     for (final row in shoppingItems) {
       final storeId = row['store_id'] as String?;
       final ingredientId = row['ingredient_id'] as String;
+      final isChecked = (row['is_checked'] as bool?) ?? false;
+      
+      // If checked and store_id is null, it's from home inventory - show as "Home"
+      final storeName = storeId != null 
+          ? stores[storeId] 
+          : (isChecked ? '🏠 Home' : null);
       
       items.add(ShoppingListItem(
         id: row['id'] as String,
         ingredientName: ingredients[ingredientId] ?? 'Unknown Ingredient',
         storeId: storeId,
-        storeName: storeId != null ? stores[storeId] : null,
+        storeName: storeName,
         unit: row['unit'] as String?,
         qty: (row['quantity'] as num?)?.toDouble(),
-        purchased: (row['is_checked'] as bool?) ?? false,
+        purchased: isChecked,
       ));
     }
     
@@ -732,28 +745,77 @@ Future<void> _generateShoppingListFromPlan(
     }
   }
   
-  // Get home inventory to exclude from shopping list
+  // Get home inventory with quantities to subtract from shopping list
   final homeInventory = await client
       .from('home_inventory')
-      .select('ingredient_name')
+      .select('ingredient_name, quantity, unit')
       .eq('user_id', userId);
   
-  final homeIngredientNames = homeInventory
-      .map((item) => (item['ingredient_name'] as String).toLowerCase())
-      .toSet();
+  // Create a map of ingredient name (lowercase) to home inventory data
+  final homeInventoryMap = <String, Map<String, dynamic>>{};
+  for (final item in homeInventory) {
+    final name = (item['ingredient_name'] as String).toLowerCase();
+    homeInventoryMap[name] = {
+      'quantity': item['quantity'] as num?,
+      'unit': item['unit'] as String?,
+    };
+  }
   
-  logDebug('🏠 Found ${homeIngredientNames.length} home inventory items: $homeIngredientNames');
+  logDebug('🏠 Found ${homeInventoryMap.length} home inventory items: ${homeInventoryMap.keys.toList()}');
   
-  // Filter out ingredients that are at home
+  // Calculate shopping list by subtracting home inventory quantities
+  // Also track home inventory items being used (to show them as checked)
   final shoppingIngredients = <String, Map<String, dynamic>>{};
+  final homeInventoryUsed = <String, Map<String, dynamic>>{};
+  
   for (final entry in ingredientMap.entries) {
     final ingredientName = entry.key;
     final ingredientData = entry.value;
+    final neededQuantity = (ingredientData['quantity'] as num?) ?? 0;
+    final neededUnit = ingredientData['unit'] as String?;
     
-    if (!homeIngredientNames.contains(ingredientName.toLowerCase())) {
+    final homeItem = homeInventoryMap[ingredientName.toLowerCase()];
+    
+    if (homeItem == null) {
+      // Not in home inventory, add full quantity
       shoppingIngredients[ingredientName] = ingredientData;
+      logDebug('🛒 Adding "$ingredientName" ($neededQuantity $neededUnit) - not in home inventory');
     } else {
-      logDebug('🏠 Excluding "$ingredientName" from shopping list (available at home)');
+      final homeQuantity = homeItem['quantity'] as num? ?? 0;
+      final homeUnit = homeItem['unit'] as String?;
+      
+      // If units match, compare quantities
+      if (neededUnit != null && homeUnit != null && neededUnit.toLowerCase() == homeUnit.toLowerCase()) {
+        if (homeQuantity >= neededQuantity) {
+          // Have enough at home - add to home inventory used list (checked)
+          final usedQuantity = neededQuantity; // Use what's needed, not what's available
+          homeInventoryUsed[ingredientName] = {
+            'name': ingredientName,
+            'quantity': usedQuantity,
+            'unit': neededUnit,
+          };
+          logDebug('🏠 Using "$ingredientName" from home ($usedQuantity $neededUnit) - have $homeQuantity, need $neededQuantity');
+        } else {
+          // Need more, add the difference to shopping list
+          final remainingQuantity = neededQuantity - homeQuantity;
+          shoppingIngredients[ingredientName] = {
+            'name': ingredientName,
+            'quantity': remainingQuantity,
+            'unit': neededUnit,
+          };
+          // Also add what we're using from home
+          homeInventoryUsed[ingredientName] = {
+            'name': ingredientName,
+            'quantity': homeQuantity,
+            'unit': neededUnit,
+          };
+          logDebug('🛒 Adding "$ingredientName" ($remainingQuantity $neededUnit) to buy - using $homeQuantity from home');
+        }
+      } else {
+        // Units don't match or one is null, can't compare - include in shopping list
+        shoppingIngredients[ingredientName] = ingredientData;
+        logDebug('🛒 Adding "$ingredientName" ($neededQuantity $neededUnit) - unit mismatch (home: $homeUnit)');
+      }
     }
   }
   
@@ -904,7 +966,44 @@ Future<void> _generateShoppingListFromPlan(
     }
   }
   
-  logDebug('Auto-generated shopping list with ${shoppingIngredients.length} ingredients');
+  // Add home inventory items that are being used (marked as checked)
+  for (final entry in homeInventoryUsed.entries) {
+    final ingredientName = entry.key;
+    final ingredientData = entry.value;
+    
+    // Find or create ingredient
+    final ingredientResponse = await client
+        .from('ingredients')
+        .select('id')
+        .eq('name', ingredientName)
+        .maybeSingle();
+    
+    String ingredientId;
+    if (ingredientResponse != null) {
+      ingredientId = ingredientResponse['id'] as String;
+    } else {
+      // Create new ingredient if it doesn't exist
+      final newIngredient = await client
+          .from('ingredients')
+          .insert({'name': ingredientName})
+          .select('id')
+          .single();
+      ingredientId = newIngredient['id'] as String;
+    }
+    
+    // Insert home inventory item as checked shopping list item
+    logDebug('🏠 Inserting home inventory item: ingredient=$ingredientId, quantity=${ingredientData['quantity']}');
+    await client.from('shopping_list_items').insert({
+      'meal_plan_id': weeklyPlanId,
+      'ingredient_id': ingredientId,
+      'store_id': null, // null store_id indicates home inventory
+      'quantity': ingredientData['quantity'],
+      'unit': ingredientData['unit'],
+      'is_checked': true, // Mark as checked since it's at home
+    });
+  }
+  
+  logDebug('Auto-generated shopping list with ${shoppingIngredients.length} ingredients to buy and ${homeInventoryUsed.length} items from home');
 }
 
 // Helper function to select optimal recipes that minimize store visits

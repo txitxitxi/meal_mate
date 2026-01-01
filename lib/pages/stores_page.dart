@@ -314,7 +314,7 @@ class _StoresPageState extends ConsumerState<StoresPage> {
   }
 }
 
-class _DraggableStoreTile extends StatelessWidget {
+class _DraggableStoreTile extends ConsumerWidget {
   const _DraggableStoreTile({
     super.key,
     required this.store,
@@ -331,10 +331,12 @@ class _DraggableStoreTile extends StatelessWidget {
   final ValueChanged<bool>? onExpansionChanged;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final scheme = Theme.of(context).colorScheme;
     final highlightContainer = scheme.primaryContainer;
     final highlightText = scheme.onPrimaryContainer;
+    final itemsAsync = ref.watch(storeItemsProvider(store.id));
+    
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       child: ExpansionTile(
@@ -343,26 +345,6 @@ class _DraggableStoreTile extends StatelessWidget {
         onExpansionChanged: onExpansionChanged,
         title: Row(
           children: [
-            // Show position number
-            Container(
-              width: 24,
-              height: 24,
-              decoration: BoxDecoration(
-                color: Colors.grey.shade200,
-                shape: BoxShape.circle,
-              ),
-              child: Center(
-                child: Text(
-                  '${index + 1}',
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 12,
-                    color: Colors.grey.shade700,
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(width: 12),
             Expanded(child: Text(store.name)),
             if (highlightedIngredient != null && isExpanded)
               Container(
@@ -381,6 +363,11 @@ class _DraggableStoreTile extends StatelessWidget {
                 ),
               ),
           ],
+        ),
+        subtitle: itemsAsync.when(
+          data: (items) => Text('${items.length} items', style: const TextStyle(fontSize: 12)),
+          loading: () => const Text('Loading...', style: TextStyle(fontSize: 12)),
+          error: (_, __) => const Text('Error', style: TextStyle(fontSize: 12)),
         ),
         children: [
           const SizedBox(height: 8),
@@ -501,6 +488,8 @@ class _AddItemButtonState extends ConsumerState<_AddItemButton> {
               final messenger = ScaffoldMessenger.of(context);
               logDebug('Calling addStoreItemProvider...');
               try {
+                // Invalidate the provider first to ensure fresh execution
+                ref.invalidate(addStoreItemProvider((storeId: widget.storeId, ingredientName: name)));
                 await ref.read(addStoreItemProvider((storeId: widget.storeId, ingredientName: name)).future);
                 logDebug('Successfully called addStoreItemProvider');
                 // Invalidate the store items provider to refresh the list
@@ -924,17 +913,22 @@ class _HomeInventoryContentState extends ConsumerState<_HomeInventoryContent> {
           const Text('Items at Home:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
           const SizedBox(height: 6),
           homeInventoryAsync.when(
-            data: (items) => Wrap(
-              spacing: 6,
-              runSpacing: 6,
-              children: items.map((item) {
-                return _DeletableHomeInventoryChip(
-                  item: item,
-                  onDeleted: () {
-                    ref.invalidate(homeInventoryStreamProvider);
-                  },
-                );
-              }).toList(),
+            data: (items) => ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 200),
+              child: SingleChildScrollView(
+                child: Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: items.map((item) {
+                    return _DeletableHomeInventoryChip(
+                      item: item,
+                      onDeleted: () {
+                        ref.invalidate(homeInventoryStreamProvider);
+                      },
+                    );
+                  }).toList(),
+                ),
+              ),
             ),
             loading: () => const Padding(
               padding: EdgeInsets.all(4.0),
@@ -1081,41 +1075,28 @@ class _DeletableHomeInventoryChipState extends ConsumerState<_DeletableHomeInven
         : widget.item.ingredientName;
     final scheme = Theme.of(context).colorScheme;
     final homeColor = scheme.secondary;
-    final homeContainer = scheme.secondaryContainer;
 
     return Chip(
-      label: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.home, size: 16, color: homeColor),
-          const SizedBox(width: 4),
-          Text(displayText),
-          const SizedBox(width: 4),
-          if (_isDeleting)
-            const SizedBox(
+      deleteIcon: _isDeleting
+          ? const SizedBox(
               width: 16,
               height: 16,
               child: CircularProgressIndicator(strokeWidth: 2),
             )
-          else
-            IconButton(
-              icon: Icon(
-                Icons.close,
-                size: 14,
-                color: Colors.grey.shade600,
-              ),
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(
-                minWidth: 24,
-                minHeight: 24,
-              ),
-              onPressed: _deleteItem,
-              tooltip: 'Remove from home inventory',
+          : Icon(
+              Icons.close,
+              size: 14,
+              color: Colors.grey.shade600,
             ),
+      onDeleted: _deleteItem,
+      label: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.home, size: 16, color: homeColor),
+          const SizedBox(width: 6),
+          Text(displayText),
         ],
       ),
-      backgroundColor: homeContainer.withValues(alpha: 0.7),
-      side: BorderSide(color: homeColor.withValues(alpha: 0.4)),
     );
   }
 }

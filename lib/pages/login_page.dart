@@ -107,27 +107,29 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     
     return Scaffold(
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // App Logo/Title
-              Icon(
-                Icons.restaurant_menu,
-                size: 80,
-                color: theme.colorScheme.primary,
-              ),
-              const SizedBox(height: 16),
-              Text(
-                'Meal Mate',
-                textAlign: TextAlign.center,
-                style: theme.textTheme.headlineMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                  color: theme.colorScheme.primary,
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const SizedBox(height: 40),
+                // App Logo/Title
+                Image.asset(
+                  'assets/app_icon_1024.png',
+                  width: 120,
+                  height: 120,
                 ),
-              ),
+                const SizedBox(height: 16),
+                Text(
+                  '饭堂',
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.headlineMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: theme.colorScheme.primary,
+                  ),
+                ),
               const SizedBox(height: 8),
               Text(
                 'Plan meals, create recipes, shop smarter',
@@ -268,7 +270,9 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                 ),
               ),
-            ],
+                const SizedBox(height: 40),
+              ],
+            ),
           ),
         ),
       ),

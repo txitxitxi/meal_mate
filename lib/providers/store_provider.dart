@@ -140,12 +140,12 @@ final addStoreItemProvider = FutureProvider.family<void, ({String storeId, Strin
     logDebug('Created new ingredient with ID: $ingredientId');
   }
   
-  // Then add the store item
+  // Then add the store item (use upsert to handle case where item might already exist)
   logDebug('Adding store item: store_id=${args.storeId}, ingredient_id=$ingredientId');
-  await client.from('store_items').insert({
+  await client.from('store_items').upsert({
     'store_id': args.storeId,
     'ingredient_id': ingredientId,
-  });
+  }, onConflict: 'store_id,ingredient_id');
   
   logDebug('Successfully added ingredient to store');
 });

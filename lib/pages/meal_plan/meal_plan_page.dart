@@ -2,7 +2,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/meal_plan_providers.dart';
-import '../../providers/home_inventory_providers.dart';
 import '../../models/moduels.dart';
 import '../../utils/protein_preferences.dart';
 import '../../utils/logger.dart';
@@ -544,7 +543,6 @@ class _ShoppingListTab extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final itemsAsync = ref.watch(shoppingListProvider);
-    final homeInventoryAsync = ref.watch(homeInventoryStreamProvider);
     final scheme = Theme.of(context).colorScheme;
     final storeColor = scheme.primary;
     final storeContainer = scheme.primaryContainer;
@@ -561,24 +559,9 @@ class _ShoppingListTab extends ConsumerWidget {
         Expanded(
           child: itemsAsync.when(
             data: (items) {
-              return homeInventoryAsync.when(
-                data: (homeItems) {
-                  final grouped = _groupByStore(items);
-                  
-                  // Add home inventory as a special section
-                  if (homeItems.isNotEmpty) {
-                    grouped['🏠 Home'] = homeItems.map((item) => ShoppingListItem(
-                      id: item.id,
-                      ingredientName: item.ingredientName,
-                      storeId: null,
-                      storeName: 'Home',
-                      unit: item.unit,
-                      qty: item.quantity,
-                      purchased: false,
-                    )).toList();
-                  }
-                  
-                  if (items.isEmpty && homeItems.isEmpty) {
+              final grouped = _groupByStore(items);
+              
+              if (items.isEmpty) {
                     return const Center(
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
@@ -662,10 +645,6 @@ class _ShoppingListTab extends ConsumerWidget {
                 separatorBuilder: (_, __) => const SizedBox(height: 8),
                 itemCount: sortedEntries.length,
               );
-                },
-                loading: () => const Center(child: CircularProgressIndicator()),
-                error: (e, st) => Center(child: Text('Error loading home inventory: $e')),
-              );
             },
             loading: () => const Center(child: CircularProgressIndicator()),
             error: (e, st) => Center(child: Text('Error: $e')),
@@ -679,7 +658,8 @@ class _ShoppingListTab extends ConsumerWidget {
 Map<String, List<ShoppingListItem>> _groupByStore(List<ShoppingListItem> items) {
   final map = <String, List<ShoppingListItem>>{};
   for (final it in items) {
-    final storeName = it.storeName ?? 'No Store';
+    // If storeName is null but item is checked, it's from home inventory
+    final storeName = it.storeName ?? (it.purchased ? '🏠 Home' : 'No Store');
     map.putIfAbsent(storeName, () => []).add(it);
   }
   return map;
