@@ -30,9 +30,15 @@ class _HomePageState extends ConsumerState<HomePage> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // Update index whenever dependencies change (e.g., route changes)
-    _updateIndexFromRoute();
+    // Only update index from route on initial load or external navigation (browser back/forward, deep links)
+    // Skip during user-initiated tab switches to avoid double render
+    if (!_isUserNavigating) {
+      _updateIndexFromRoute();
+    }
+    _isUserNavigating = false;
   }
+
+  bool _isUserNavigating = false;
 
   void _updateIndexFromRoute() {
     if (!mounted) return;
@@ -40,18 +46,19 @@ class _HomePageState extends ConsumerState<HomePage> {
       final router = GoRouter.of(context);
       final location = router.routerDelegate.currentConfiguration.uri.path;
       
-    // Try to match the current route
-    int newIndex = 0;
-    if (location.contains('public-recipes') || location == '/home' || location == '/home/') {
-      newIndex = 0;
-    } else if (location.contains('recipes')) {
-      newIndex = 1;
-    } else if (location.contains('stores')) {
-      newIndex = 2;
-    } else if (location.contains('weekly')) {
-      newIndex = 3;
-    }
+      // Try to match the current route
+      int newIndex = 0;
+      if (location.contains('public-recipes') || location == '/home' || location == '/home/') {
+        newIndex = 0;
+      } else if (location.contains('recipes')) {
+        newIndex = 1;
+      } else if (location.contains('stores')) {
+        newIndex = 2;
+      } else if (location.contains('weekly')) {
+        newIndex = 3;
+      }
       
+      // Only update if index actually changed to avoid unnecessary rebuilds
       if (newIndex != _index) {
         setState(() => _index = newIndex);
       }
@@ -74,13 +81,6 @@ class _HomePageState extends ConsumerState<HomePage> {
   Widget build(BuildContext context) {
     final userProfile = ref.watch(userProfileProvider);
     final theme = Theme.of(context);
-    
-    // Update index from route on every build to ensure sync
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        _updateIndexFromRoute();
-      }
-    });
     
     return Scaffold(
       appBar: AppBar(
@@ -141,7 +141,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                     // TODO: Navigate to profile page
                     break;
                   case 'settings':
-                    // TODO: Navigate to settings page
+                    context.push('/settings');
                     break;
                   case 'signout':
                     final authController = ref.read(authControllerProvider);
@@ -186,11 +186,20 @@ class _HomePageState extends ConsumerState<HomePage> {
           NavigationDestination(icon: Icon(Icons.calendar_month), label: 'Meal Prep'),
         ],
         onDestinationSelected: (i) {
-          setState(() => _index = i);
-          // Navigate to the corresponding route only if different
-          final currentLocation = GoRouter.of(context).routerDelegate.currentConfiguration.uri.path;
-          if (currentLocation != _tabs[i]) {
-            context.go(_tabs[i]);
+          // Only update index if different (IndexedStack handles the visual switch)
+          if (_index != i) {
+            _isUserNavigating = true; // Flag to prevent didChangeDependencies from updating index
+            setState(() => _index = i);
+            // Update route asynchronously for URL/bookmarking (but don't let it trigger rebuilds)
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) {
+                final currentLocation = GoRouter.of(context).routerDelegate.currentConfiguration.uri.path;
+                if (currentLocation != _tabs[i]) {
+                  // Use replace instead of go to avoid navigation animation
+                  context.replace(_tabs[i]);
+                }
+              }
+            });
           }
         },
       ),

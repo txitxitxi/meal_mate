@@ -6,12 +6,14 @@ import 'package:go_router/go_router.dart';
 import 'pages/home_page.dart';
 import 'pages/login_page.dart';
 import 'pages/profile_setup_page.dart';
+import 'pages/settings_page.dart';
 import 'pages/recipes_page.dart';
 import 'pages/public_recipes_page.dart';
 import 'pages/stores_page.dart';
 import 'pages/meal_plan/meal_plan_page.dart';
 import 'providers/auth_providers.dart';
 import 'services/supabase_service.dart';
+import 'models/user_profile.dart';
 
 class GoRouterRefreshStream extends ChangeNotifier {
   GoRouterRefreshStream(Stream<dynamic> stream) {
@@ -41,6 +43,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: '/profile-setup',
         name: 'profile-setup',
         builder: (context, state) => const ProfileSetupPage(),
+      ),
+      GoRoute(
+        path: '/settings',
+        name: 'settings',
+        builder: (context, state) => const SettingsPage(),
       ),
       GoRoute(
         path: '/home',
@@ -88,11 +95,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       ),
     ],
     redirect: (context, state) async {
-      final container = ProviderScope.containerOf(context);
-      final authState = await container.read(authStateProvider.future);
-      final profile = await container.read(userProfileProvider.future);
-      
-      final session = authState.session;
+      // Check current session directly from Supabase client for immediate state
+      final session = SupabaseService.client.auth.currentSession;
       final currentPath = state.matchedLocation;
       
       // Not authenticated
@@ -101,14 +105,28 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         return '/login';
       }
       
+      // Authenticated - check profile directly from database
+      UserProfile? profile;
+      try {
+        profile = await SupabaseService.getCurrentUserProfile();
+      } catch (e) {
+        // If profile check fails, assume no profile yet
+        profile = null;
+      }
+      
       // Authenticated but no profile yet
       if (profile == null) {
-        if (currentPath == '/profile-setup' || currentPath == '/login') return null;
+        // Only redirect to profile-setup if not already there
+        if (currentPath == '/profile-setup') return null;
+        if (currentPath == '/login') return null;
         return '/profile-setup';
       }
       
-      // Authenticated with profile, redirect away from auth pages
-      if (currentPath == '/login' || currentPath == '/profile-setup') {
+      // Authenticated with profile - redirect away from auth pages only
+      if (currentPath == '/login') {
+        return '/home';
+      }
+      if (currentPath == '/profile-setup') {
         return '/home';
       }
       
